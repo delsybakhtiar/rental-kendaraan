@@ -1,0 +1,221 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Car Rental & Tracking System with Geofencing
+// Bintan Island Rental - Comprehensive Geofencing System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// Users Table - Menyimpan data akun pelanggan dan admin
+// ============================================
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         String   @default("customer") // 'admin', 'customer'
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  rentals      Rental[]
+  trackingLogs TrackingLog[]
+
+  @@map("users")
+}
+
+// ============================================
+// Vehicles Table - Menyimpan data unit mobil yang disewakan
+// ============================================
+model Vehicle {
+  id              String   @id @default(cuid())
+  plateNumber     String   @unique @map("plate_number")
+  model           String
+  brand           String
+  year            Int
+  color           String
+  status          String   @default("available") // 'available', 'rented', 'maintenance'
+  
+  // Location fields (adapted from GEOGRAPHY(POINT, 4326))
+  latitude        Float?
+  longitude       Float?
+  lastLocationAt  DateTime? @map("last_location_at")
+  
+  // Vehicle details
+  dailyRate       Decimal  @map("daily_rate") // Tarif sewa per hari (NUMERIC)
+  imageUrl        String?  @map("image_url")
+  
+  // Engine Control (for security feature)
+  engineEnabled   Boolean  @default(true) @map("engine_enabled")
+  engineKilledAt  DateTime? @map("engine_killed_at")
+  engineKillReason String? @map("engine_kill_reason")
+  engineKilledBy  String?  @map("engine_killed_by") // User ID who killed engine
+  
+  // Stationary Tracking (for Port Watch feature)
+  stationarySince DateTime? @map("stationary_since")
+  stationaryLat   Float?   @map("stationary_lat")
+  stationaryLng   Float?   @map("stationary_lng")
+  stationaryAlertSent Boolean @default(false) @map("stationary_alert_sent")
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  rentals         Rental[]
+  trackingLogs    TrackingLog[]
+  alerts          GeofenceAlert[]
+
+  @@map("vehicles")
+}
+
+// ============================================
+// Tracking Logs Table - Data historis perjalanan mobil
+// ============================================
+model TrackingLog {
+  id         String   @id @default(cuid())
+  vehicleId  String   @map("vehicle_id")
+  
+  // Location fields (adapted from GEOGRAPHY(POINT, 4326))
+  latitude   Float
+  longitude  Float
+  
+  speed      Float?   // Kecepatan dalam km/jam
+  heading    Float?   // Arah dalam derajat (0-360)
+  
+  recordedAt DateTime @default(now()) @map("recorded_at")
+  
+  // Additional info
+  ignition   Boolean? @default(false) // Status mesin
+  fuel       Float?   // Level bahan bakar (persentase)
+  
+  // Relations
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  userId     String?  @map("user_id")
+  user       User?    @relation(fields: [userId], references: [id])
+
+  @@index([vehicleId])
+  @@index([recordedAt])
+  @@map("tracking_logs")
+}
+
+// ============================================
+// Geofences Table - Area aman/zona yang diperbolehkan
+// ============================================
+model Geofence {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  
+  // Polygon coordinates stored as JSON
+  // Format: [[lng, lat], [lng, lat], ...] (closed polygon)
+  coordinates String  // JSON array of coordinate pairs
+  
+  isActive    Boolean  @default(true) @map("is_active")
+  color       String   @default("#22c55e") // Warna pada peta
+  
+  // Geofence type
+  // 'island_boundary' - Main safe zone (Bintan Island)
+  // 'port_watch' - Port areas for stationary monitoring
+  // 'restricted' - Restricted areas
+  type        String   @default("safe")
+  
+  // Alert settings
+  alertOnEntry  Boolean @default(false) @map("alert_on_entry")
+  alertOnExit   Boolean @default(true) @map("alert_on_exit")
+  
+  // Alert level for this geofence
+  // 'low', 'medium', 'high', 'critical'
+  alertLevel    String  @default("medium") @map("alert_level")
+  
+  // Port Watch settings (for type='port_watch')
+  stationaryThresholdMinutes Int? @map("stationary_threshold_minutes") // Default 30 minutes
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  alerts      GeofenceAlert[]
+
+  @@map("geofences")
+}
+
+// ============================================
+// Geofence Alerts - Log peringatan geofence
+// ============================================
+model GeofenceAlert {
+  id         String   @id @default(cuid())
+  geofenceId String?  @map("geofence_id") // Optional for engine_kill alerts
+  vehicleId  String?  @map("vehicle_id")
+  
+  alertType  String   @map("alert_type") // 'entry', 'exit', 'stationary', 'engine_kill'
+  message    String
+  
+  // Alert severity level
+  // 'low' - Info only
+  // 'medium' - Warning
+  // 'high' - Urgent attention needed
+  // 'critical' - Immediate action required (e.g., island exit)
+  alertLevel String  @default("medium") @map("alert_level")
+  
+  locationLat Float?  @map("location_lat")
+  locationLng Float?  @map("location_lng")
+  
+  isResolved Boolean  @default(false) @map("is_resolved")
+  resolvedAt DateTime? @map("resolved_at")
+  resolvedBy String?  @map("resolved_by") // User ID who resolved
+  
+  createdAt  DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  geofence   Geofence? @relation(fields: [geofenceId], references: [id], onDelete: Cascade)
+  vehicle    Vehicle?  @relation(fields: [vehicleId], references: [id])
+
+  @@index([vehicleId])
+  @@index([alertLevel])
+  @@index([createdAt])
+  @@index([isResolved])
+  @@map("geofence_alerts")
+}
+
+// ============================================
+// Rentals Table - Data penyewaan
+// ============================================
+model Rental {
+  id          String   @id @default(cuid())
+  vehicleId   String   @map("vehicle_id")
+  userId      String   @map("user_id")
+  
+  startDate   DateTime @map("start_date")
+  endDate     DateTime @map("end_date")
+  actualEndDate DateTime? @map("actual_end_date")
+  
+  totalAmount Decimal  @map("total_amount") // NUMERIC
+  deposit     Decimal  @default(0) // NUMERIC
+  
+  status      String   @default("active") // 'active', 'completed', 'cancelled'
+  
+  // Odometer readings
+  startOdometer Float?  @map("start_odometer")
+  endOdometer   Float?  @map("end_odometer")
+  
+  notes       String?
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id])
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([vehicleId])
+  @@map("rentals")
+}
