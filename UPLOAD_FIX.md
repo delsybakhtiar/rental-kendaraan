@@ -17,6 +17,10 @@
 4. **Image Cropping Issue**:
    - Gambar kendaraan terpotong karena menggunakan `object-cover` CSS property
 
+5. **Production Deployment Issue**:
+   - Local storage fallback tidak bekerja di Vercel (serverless environment)
+   - Vercel Blob perlu dikonfigurasi untuk production
+
 ## Solusi yang Diterapkan
 
 ### 1. Update Upload API Route
@@ -48,18 +52,53 @@
 - Menambah `bg-white/5` untuk background pada container gambar
 - Ini memastikan gambar tidak terpotong dan menampilkan seluruh gambar
 
-### 4. Infrastructure Changes
+### 4. Production Deployment Fix
+- **File**: `/src/app/api/upload/route.ts`
+- Menghapus local storage fallback untuk production (Vercel)
+- Menambah error message yang jelas jika Vercel Blob belum dikonfigurasi
+- **WAJIB**: Setup Vercel Blob untuk production deployment
 - Create `/public/uploads/` directory untuk local storage fallback
 - Add `.gitkeep` file untuk ensure folder di-track oleh git
 
 ## File yang Diubah
 
-1. `/src/app/api/upload/route.ts` - Upload handler diperbaiki
+1. `/src/app/api/upload/route.ts` - Upload handler diperbaiki untuk production
 2. `/src/app/admin/dashboard/page.tsx` - Image error handling dan cropping fix ditambah
 3. `/public/uploads/.gitkeep` - Created untuk folder tracking
+4. `/VERCEL_BLOB_SETUP.md` - Dokumentasi setup Vercel Blob untuk production
+
+## Setup untuk Production (VERCEL)
+
+**WAJIB dilakukan sebelum deploy ke production:**
+
+1. **Install Vercel CLI**:
+   ```bash
+   npm install -g vercel
+   ```
+
+2. **Login ke Vercel**:
+   ```bash
+   vercel login
+   ```
+
+3. **Setup Vercel Blob**:
+   ```bash
+   vercel blob
+   ```
+
+4. **Set Environment Variable di Vercel Dashboard**:
+   - Name: `BLOB_READ_WRITE_TOKEN`
+   - Value: (dari output command `vercel blob`)
+   - Environment: Production
+
+5. **Redeploy**:
+   ```bash
+   vercel --prod
+   ```
 
 ## Testing Upload Flow
 
+### Development (Local):
 1. Buka Admin Dashboard
 2. Klik tombol "Tambah" pada "Daftar Kendaraan"
 3. Klik area upload untuk pilih gambar
@@ -67,6 +106,11 @@
 5. File akan di-upload dan preview akan tampil
 6. Pastikan icon berubah from upload icon ke preview image
 7. Klik "Tambah Kendaraan" untuk simpan
+
+### Production (Vercel):
+1. Pastikan Vercel Blob sudah dikonfigurasi (lihat Setup di atas)
+2. Test upload gambar di admin dashboard
+3. Jika error "Vercel Blob tidak dikonfigurasi", ikuti setup steps
 
 ## Troubleshooting
 
@@ -76,10 +120,10 @@
 3. Pastikan file type adalah image (JPEG, PNG, WebP, GIF)
 4. Check `/public/uploads/` folder ada dan writable
 
-### Jika Gambar Tidak Tampil Setelah Ditambah
-1. Check Network tab di developer tools - apakah image URL accessible
-2. Jika menggunakan Vercel Blob, pastikan `BLOB_READ_WRITE_TOKEN` di-set dengan benar
-3. Jika fallback ke local storage, pastikan `/public/uploads/` folder accessible
+### Jika "Vercel Blob tidak dikonfigurasi" muncul (Production)
+1. Ikuti setup steps di `VERCEL_BLOB_SETUP.md`
+2. Pastikan `BLOB_READ_WRITE_TOKEN` environment variable sudah diset di Vercel
+3. Redeploy aplikasi setelah set environment variable
 
 ### Jika Gambar Terpotong
 1. Pastikan CSS class menggunakan `object-contain` bukan `object-cover`
@@ -88,7 +132,8 @@
 
 ## Notes
 
-- Upload handler sekarang support baik Vercel Blob maupun local file system
+- **Production**: Upload handler hanya menggunakan Vercel Blob (local storage tidak didukung di Vercel)
+- **Development**: Upload handler menggunakan Vercel Blob terlebih dahulu, fallback ke local storage
 - Local fallback sangat useful untuk development/testing
 - Filename di-generate dengan timestamp dan random string untuk avoid collision
 - Image display sekarang have graceful fallback dengan icon jika image gagal load

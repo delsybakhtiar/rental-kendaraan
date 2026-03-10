@@ -1,7 +1,4 @@
 import { NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
-import { existsSync } from 'fs';
 
 export async function POST(request: Request): Promise<NextResponse> {
   try {
@@ -36,11 +33,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     const timestamp = Date.now();
     const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
     const filename = `vehicle-${timestamp}-${Math.random().toString(36).substring(7)}.${ext}`;
-    
+
     try {
-      // Try Vercel Blob if available
+      // Try Vercel Blob
       const { put } = await import('@vercel/blob');
-      
+
       const blob = await put(filename, file, {
         access: 'public',
       });
@@ -52,43 +49,25 @@ export async function POST(request: Request): Promise<NextResponse> {
         source: 'vercel-blob',
       });
     } catch (blobError) {
-      console.warn('Vercel Blob upload failed, trying local storage:', blobError);
-      
-      // Fallback: Save locally
-      try {
-        const uploadDir = join(process.cwd(), 'public', 'uploads');
-        
-        // Create directory if not exists
-        if (!existsSync(uploadDir)) {
-          await mkdir(uploadDir, { recursive: true });
-        }
+      console.error('Vercel Blob upload failed:', blobError);
 
-        const bytes = await file.arrayBuffer();
-        const buffer = Buffer.from(bytes);
-        
-        const filepath = join(uploadDir, filename);
-        await writeFile(filepath, buffer);
-        
-        // Return local path as URL
-        const imageUrl = `/uploads/${filename}`;
-        
-        return NextResponse.json({
-          success: true,
-          imageUrl,
-          url: imageUrl,
-          source: 'local-storage',
-        });
-      } catch (localError) {
-        console.error('Local storage fallback failed:', localError);
-        throw localError;
-      }
+      // In production (Vercel), we can't use local storage
+      // Return clear error message
+      return NextResponse.json(
+        {
+          error: "Upload gagal: Vercel Blob tidak dikonfigurasi. Silakan hubungi administrator untuk setup storage.",
+          success: false,
+          details: process.env.NODE_ENV === 'development' ? blobError instanceof Error ? blobError.message : 'Unknown error' : undefined
+        },
+        { status: 500 }
+      );
     }
   } catch (error) {
     console.error('Upload error:', error);
     return NextResponse.json(
-      { 
-        error: error instanceof Error ? error.message : "Gagal mengupload file", 
-        success: false 
+      {
+        error: error instanceof Error ? error.message : "Gagal mengupload file",
+        success: false
       },
       { status: 500 }
     );
