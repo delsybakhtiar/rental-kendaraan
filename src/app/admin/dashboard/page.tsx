@@ -1051,6 +1051,17 @@ export default function DashboardPage() {
                               src={vehicle.imageUrl} 
                               alt={vehicle.plateNumber}
                               className="w-10 h-10 rounded-lg object-cover"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                const parent = target.parentElement;
+                                if (parent && parent.querySelector('.fallback-icon') === null) {
+                                  const fallback = document.createElement('div');
+                                  fallback.className = 'w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center fallback-icon';
+                                  fallback.innerHTML = '<svg class="h-5 w-5 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c.553 0 1-.448 1-1s-.447-1-1-1-1 .448-1 1 .447 1 1 1z"/></svg>';
+                                  parent?.appendChild(fallback);
+                                }
+                              }}
                             />
                           ) : (
                             <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center">
@@ -1327,6 +1338,17 @@ export default function DashboardPage() {
                         src={selectedVehicle.imageUrl} 
                         alt={selectedVehicle.plateNumber}
                         className="w-12 h-12 rounded-lg object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          const parent = target.parentElement;
+                          if (parent && parent.querySelector('.fallback-icon') === null) {
+                            const fallback = document.createElement('div');
+                            fallback.className = 'w-12 h-12 rounded-lg bg-white/5 flex items-center justify-center fallback-icon';
+                            fallback.innerHTML = '<svg class="h-6 w-6 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c.553 0 1-.448 1-1s-.447-1-1-1-1 .448-1 1 .447 1 1 1z"/></svg>';
+                            parent?.appendChild(fallback);
+                          }
+                        }}
                       />
                     ) : (
                       <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-amber-500/20 to-orange-500/20 flex items-center justify-center">
@@ -1477,6 +1499,17 @@ export default function DashboardPage() {
                       src={vehicleToComplete.imageUrl} 
                       alt={vehicleToComplete.plateNumber}
                       className="w-12 h-12 rounded-lg object-cover"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent && parent.querySelector('.fallback-icon') === null) {
+                          const fallback = document.createElement('div');
+                          fallback.className = 'w-12 h-12 rounded-lg bg-white/5 flex items-center justify-center fallback-icon';
+                          fallback.innerHTML = '<svg class="h-6 w-6 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c.553 0 1-.448 1-1s-.447-1-1-1-1 .448-1 1 .447 1 1 1z"/></svg>';
+                          parent?.appendChild(fallback);
+                        }
+                      }}
                     />
                   ) : (
                     <div className="w-12 h-12 rounded-lg bg-white/5 flex items-center justify-center">
