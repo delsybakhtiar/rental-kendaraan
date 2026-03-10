@@ -1050,7 +1050,7 @@ export default function DashboardPage() {
                             <img 
                               src={vehicle.imageUrl} 
                               alt={vehicle.plateNumber}
-                              className="w-10 h-10 rounded-lg object-cover"
+                              className="w-10 h-10 rounded-lg object-contain bg-white/5"
                               onError={(e) => {
                                 const target = e.target as HTMLImageElement;
                                 target.style.display = 'none';
@@ -1337,7 +1337,7 @@ export default function DashboardPage() {
                       <img 
                         src={selectedVehicle.imageUrl} 
                         alt={selectedVehicle.plateNumber}
-                        className="w-12 h-12 rounded-lg object-cover"
+                        className="w-12 h-12 rounded-lg object-contain bg-white/5"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
                           target.style.display = 'none';
@@ -1498,7 +1498,7 @@ export default function DashboardPage() {
                     <img 
                       src={vehicleToComplete.imageUrl} 
                       alt={vehicleToComplete.plateNumber}
-                      className="w-12 h-12 rounded-lg object-cover"
+                      className="w-12 h-12 rounded-lg object-contain bg-white/5"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
                         target.style.display = 'none';

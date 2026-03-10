@@ -14,6 +14,9 @@
 3. **Image Display Error Handling**:
    - Tidak ada fallback icon ketika image gagal load
 
+4. **Image Cropping Issue**:
+   - Gambar kendaraan terpotong karena menggunakan `object-cover` CSS property
+
 ## Solusi yang Diterapkan
 
 ### 1. Update Upload API Route
@@ -39,14 +42,20 @@
   - Selected vehicle details (line 1325)
   - Complete rental dialog (line 1475)
 
-### 3. Infrastructure Changes
+### 3. Fix Image Cropping
+- **File**: `/src/app/admin/dashboard/page.tsx`
+- Mengubah `object-cover` menjadi `object-contain` di semua gambar kendaraan
+- Menambah `bg-white/5` untuk background pada container gambar
+- Ini memastikan gambar tidak terpotong dan menampilkan seluruh gambar
+
+### 4. Infrastructure Changes
 - Create `/public/uploads/` directory untuk local storage fallback
 - Add `.gitkeep` file untuk ensure folder di-track oleh git
 
 ## File yang Diubah
 
 1. `/src/app/api/upload/route.ts` - Upload handler diperbaiki
-2. `/src/app/admin/dashboard/page.tsx` - Image error handling ditambah
+2. `/src/app/admin/dashboard/page.tsx` - Image error handling dan cropping fix ditambah
 3. `/public/uploads/.gitkeep` - Created untuk folder tracking
 
 ## Testing Upload Flow
@@ -72,9 +81,15 @@
 2. Jika menggunakan Vercel Blob, pastikan `BLOB_READ_WRITE_TOKEN` di-set dengan benar
 3. Jika fallback ke local storage, pastikan `/public/uploads/` folder accessible
 
+### Jika Gambar Terpotong
+1. Pastikan CSS class menggunakan `object-contain` bukan `object-cover`
+2. Gambar sekarang akan menampilkan seluruh gambar tanpa pemotongan
+3. Jika gambar terlalu kecil, mungkin ada background putih transparan yang terlihat
+
 ## Notes
 
 - Upload handler sekarang support baik Vercel Blob maupun local file system
 - Local fallback sangat useful untuk development/testing
 - Filename di-generate dengan timestamp dan random string untuk avoid collision
 - Image display sekarang have graceful fallback dengan icon jika image gagal load
+- Gambar kendaraan tidak lagi terpotong dan menampilkan seluruh gambar
