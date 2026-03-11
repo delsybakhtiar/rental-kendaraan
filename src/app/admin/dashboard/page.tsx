@@ -1016,7 +1016,7 @@ export default function DashboardPage() {
                         <Button
                           variant="outline"
                           onClick={() => setIsAddVehicleOpen(false)}
-                          className="border-white/10 text-white/60 hover:text-white hover:bg-white/5"
+                          className="border-white/10 text-white/80 hover:text-white hover:bg-white/5"
                         >
                           Batal
                         </Button>
