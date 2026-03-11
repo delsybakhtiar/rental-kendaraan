@@ -55,7 +55,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 
 // Constants
-const WHATSAPP_NUMBER = '6281234567890';
+const WHATSAPP_NUMBER = '6285374383791';
 const DRIVER_FEE_PER_DAY = 150000;
 const PAYMENT_TIMEOUT_MINUTES = 30;
 
@@ -651,7 +651,8 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                 <SelectTrigger className="bg-gray-50 border-gray-200 text-gray-900">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-white border-gray-200">
+                {/* ensure dropdown text is dark regardless of theme, avoiding white-on-white in dark mode */}
+                <SelectContent className="bg-white border-gray-200 text-gray-900">
                   <SelectItem value="lepas-kunci">Lepas Kunci</SelectItem>
                   <SelectItem value="dengan-sopir">Dengan Sopir (+{formatRupiah(DRIVER_FEE_PER_DAY)}/hari)</SelectItem>
                 </SelectContent>
