@@ -1014,9 +1014,8 @@ export default function DashboardPage() {
 
                       <DialogFooter>
                         <Button
-                          variant="outline"
                           onClick={() => setIsAddVehicleOpen(false)}
-                          className="border-white/10 text-white/80 hover:text-white hover:bg-white/5"
+                          className="bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white"
                         >
                           Batal
                         </Button>
