@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
@@ -31,9 +31,11 @@ import {
   Sparkles,
   Bell,
   Plus,
+  Upload,
   X,
   Car,
   Trash2,
+  Image as ImageIcon,
   Loader2,
   CheckCircle,
   CreditCard,
@@ -121,6 +123,7 @@ export default function DashboardPage() {
   
   // Add Vehicle Dialog State
   const [isAddVehicleOpen, setIsAddVehicleOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [vehicleForm, setVehicleForm] = useState({
     plateNumber: '',
     brand: '',
@@ -132,6 +135,7 @@ export default function DashboardPage() {
     imageUrl: '',
   });
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Complete Rental Dialog State
   const [isCompleteRentalOpen, setIsCompleteRentalOpen] = useState(false);
@@ -382,13 +386,66 @@ export default function DashboardPage() {
     router.push('/admin/login');
   };
 
-  // URL input handler for vehicle image
-  const handleImageUrlChange = (url: string) => {
-    setVehicleForm(prev => ({ ...prev, imageUrl: url }));
-    if (url && url.startsWith('http')) {
-      setImagePreview(url);
-    } else {
+  // Image Upload Handler
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: 'Error',
+        description: 'Tipe file tidak valid. Gunakan JPEG, PNG, WebP, atau GIF.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: 'Error',
+        description: 'Ukuran file terlalu besar. Maksimum 5MB.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setImagePreview(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setVehicleForm((prev) => ({ ...prev, imageUrl: data.imageUrl }));
+        toast({
+          title: 'Upload Berhasil',
+          description: 'Gambar kendaraan berhasil diupload.',
+        });
+      } else {
+        throw new Error(data.error || 'Gagal mengupload gambar');
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Gagal mengupload gambar',
+        variant: 'destructive',
+      });
       setImagePreview(null);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -819,50 +876,54 @@ export default function DashboardPage() {
                       </DialogHeader>
                       
                       <div className="space-y-4 py-4">
-                        {/* Image URL input */}
+                        {/* Image Upload */}
                         <div className="space-y-2">
-                          <Label className="text-white/70">Foto Kendaraan (Link URL)</Label>
-                          <div className="space-y-4">
-                            <div className="relative">
-                              <input
-                                type="url"
-                                placeholder="Tempel link gambar (ex: https://.../ertiga.webp)"
-                                value={vehicleForm.imageUrl}
-                                onChange={(e) => handleImageUrlChange(e.target.value)}
-                                className="w-full p-4 bg-gray-900/50 border border-gray-700 rounded-xl text-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all outline-none pl-11"
-                                required
-                              />
-                              <div className="absolute left-4 top-4 text-gray-500">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                                </svg>
-                              </div>
-                            </div>
-
-                            <div className={
-                              `relative overflow-hidden border-2 rounded-2xl bg-gray-900/30 flex items-center justify-center transition-all duration-500 min-h-[250px] ` +
-                              (imagePreview
-                                ? 'border-solid border-gray-600'
-                                : 'border-dashed border-gray-700')
-                            }>
-                              {!imagePreview ? (
-                                <div className="text-center p-8">
-                                  <div className="bg-gray-800 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
-                                    <svg className="h-8 w-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                    </svg>
-                                  </div>
-                                  <p className="text-gray-500 text-sm">Preview mobil akan muncul di sini setelah link ditempel</p>
-                                </div>
-                              ) : (
-                                <img
-                                  id="preview_img"
-                                  src={imagePreview}
-                                  className="w-full h-64 object-cover rounded-xl shadow-2xl transition-all duration-500 transform hover:scale-105"
+                          <Label className="text-white/70">Foto Kendaraan</Label>
+                          <div 
+                            onClick={() => fileInputRef.current?.click()}
+                            className="border-2 border-dashed border-white/20 rounded-lg p-4 text-center cursor-pointer hover:border-amber-500/50 transition-colors"
+                          >
+                            {imagePreview ? (
+                              <div className="relative">
+                                <img 
+                                  src={imagePreview} 
+                                  alt="Preview" 
+                                  className="max-h-40 mx-auto rounded-lg"
                                 />
-                              )}
-                            </div>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  className="absolute top-2 right-2 h-6 w-6 p-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setImagePreview(null);
+                                    setVehicleForm(prev => ({ ...prev, imageUrl: '' }));
+                                  }}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="py-4">
+                                {isUploading ? (
+                                  <Loader2 className="h-8 w-8 animate-spin mx-auto text-amber-400" />
+                                ) : (
+                                  <>
+                                    <Upload className="h-8 w-8 mx-auto text-white/30 mb-2" />
+                                    <p className="text-sm text-white/40">Klik untuk upload gambar</p>
+                                    <p className="text-xs text-white/30">JPEG, PNG, WebP (max 5MB)</p>
+                                  </>
+                                )}
+                              </div>
+                            )}
                           </div>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageUpload}
+                            className="hidden"
+                          />
                         </div>
 
                         {/* Plate Number */}
@@ -953,8 +1014,9 @@ export default function DashboardPage() {
 
                       <DialogFooter>
                         <Button
+                          variant="outline"
                           onClick={() => setIsAddVehicleOpen(false)}
-                          className="bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-grey"
+                          className="border-white/10 text-white/60 hover:text-white hover:bg-white/5"
                         >
                           Batal
                         </Button>
@@ -988,18 +1050,7 @@ export default function DashboardPage() {
                             <img 
                               src={vehicle.imageUrl} 
                               alt={vehicle.plateNumber}
-                              className="w-10 h-10 rounded-lg object-contain bg-white/5"
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                target.style.display = 'none';
-                                const parent = target.parentElement;
-                                if (parent && parent.querySelector('.fallback-icon') === null) {
-                                  const fallback = document.createElement('div');
-                                  fallback.className = 'w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center fallback-icon';
-                                  fallback.innerHTML = '<svg class="h-5 w-5 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c.553 0 1-.448 1-1s-.447-1-1-1-1 .448-1 1 .447 1 1 1z"/></svg>';
-                                  parent?.appendChild(fallback);
-                                }
-                              }}
+                              className="w-10 h-10 rounded-lg object-cover"
                             />
                           ) : (
                             <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center">
@@ -1275,18 +1326,7 @@ export default function DashboardPage() {
                       <img 
                         src={selectedVehicle.imageUrl} 
                         alt={selectedVehicle.plateNumber}
-                        className="w-12 h-12 rounded-lg object-contain bg-white/5"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = 'none';
-                          const parent = target.parentElement;
-                          if (parent && parent.querySelector('.fallback-icon') === null) {
-                            const fallback = document.createElement('div');
-                            fallback.className = 'w-12 h-12 rounded-lg bg-white/5 flex items-center justify-center fallback-icon';
-                            fallback.innerHTML = '<svg class="h-6 w-6 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c.553 0 1-.448 1-1s-.447-1-1-1-1 .448-1 1 .447 1 1 1z"/></svg>';
-                            parent?.appendChild(fallback);
-                          }
-                        }}
+                        className="w-12 h-12 rounded-lg object-cover"
                       />
                     ) : (
                       <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-amber-500/20 to-orange-500/20 flex items-center justify-center">
@@ -1436,18 +1476,7 @@ export default function DashboardPage() {
                     <img 
                       src={vehicleToComplete.imageUrl} 
                       alt={vehicleToComplete.plateNumber}
-                      className="w-12 h-12 rounded-lg object-contain bg-white/5"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                        const parent = target.parentElement;
-                        if (parent && parent.querySelector('.fallback-icon') === null) {
-                          const fallback = document.createElement('div');
-                          fallback.className = 'w-12 h-12 rounded-lg bg-white/5 flex items-center justify-center fallback-icon';
-                          fallback.innerHTML = '<svg class="h-6 w-6 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c.553 0 1-.448 1-1s-.447-1-1-1-1 .448-1 1 .447 1 1 1z"/></svg>';
-                          parent?.appendChild(fallback);
-                        }
-                      }}
+                      className="w-12 h-12 rounded-lg object-cover"
                     />
                   ) : (
                     <div className="w-12 h-12 rounded-lg bg-white/5 flex items-center justify-center">
