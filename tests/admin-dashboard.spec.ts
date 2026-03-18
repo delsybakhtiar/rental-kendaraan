@@ -504,6 +504,41 @@ test.describe('Admin dashboard vehicle image flow', () => {
     expect(uploadAttempts).toBe(2);
   });
 
+  test('form tambah kendaraan tetap rapi di mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await bootstrapDashboard(page, [baseVehicle]);
+
+    await page.goto('/admin/dashboard');
+    await openAddVehicleDialog(page);
+
+    const dialog = page.getByRole('dialog');
+    const brandInput = page.getByTestId('vehicle-brand');
+    const modelInput = page.getByTestId('vehicle-model');
+    const uploadTrigger = page.getByTestId('vehicle-image-upload-trigger');
+    const submitButton = page.getByTestId('vehicle-submit');
+
+    await expect(dialog).toBeVisible();
+    await expect(uploadTrigger).toBeVisible();
+    await expect(submitButton).toBeVisible();
+
+    const [dialogBox, brandBox, modelBox, submitBox] = await Promise.all([
+      dialog.boundingBox(),
+      brandInput.boundingBox(),
+      modelInput.boundingBox(),
+      submitButton.boundingBox(),
+    ]);
+
+    expect(dialogBox).not.toBeNull();
+    expect(brandBox).not.toBeNull();
+    expect(modelBox).not.toBeNull();
+    expect(submitBox).not.toBeNull();
+
+    expect(Math.abs((brandBox?.x ?? 0) - (modelBox?.x ?? 0))).toBeLessThan(4);
+    expect((modelBox?.y ?? 0)).toBeGreaterThan((brandBox?.y ?? 0));
+    expect((submitBox?.width ?? 0)).toBeGreaterThan(250);
+    expect((dialogBox?.width ?? 0)).toBeLessThanOrEqual(360);
+  });
+
   test('fallback muncul saat imageUrl kendaraan rusak', async ({ page }) => {
     const brokenVehicle = makeVehicle({
       id: 'vehicle-broken',

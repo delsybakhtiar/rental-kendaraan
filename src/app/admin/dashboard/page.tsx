@@ -1202,7 +1202,7 @@ export default function DashboardPage() {
                         Tambah
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="bg-[#0a0a0f] border-white/10 text-white max-w-md">
+                    <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-xl overflow-y-auto rounded-2xl border border-white/10 bg-[#0a0a0f] p-4 text-white sm:p-6">
                       <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                           <Car className="h-5 w-5 text-amber-400" />
@@ -1213,21 +1213,21 @@ export default function DashboardPage() {
                         </DialogDescription>
                       </DialogHeader>
                       
-                      <div className="space-y-4 py-4">
+                      <div className="space-y-4 py-2 sm:space-y-5 sm:py-4">
                         {/* Image Upload */}
                         <div className="space-y-2">
                           <Label className="text-white/70">Foto Kendaraan</Label>
                           <div 
                             onClick={() => fileInputRef.current?.click()}
                             data-testid="vehicle-image-upload-trigger"
-                            className="border-2 border-dashed border-white/20 rounded-lg p-4 text-center cursor-pointer hover:border-amber-500/50 transition-colors"
+                            className="cursor-pointer rounded-xl border-2 border-dashed border-white/20 p-3 text-center transition-colors hover:border-amber-500/50 sm:p-4"
                           >
                             {imagePreview ? (
                               <div className="relative" data-testid="vehicle-image-preview-container">
                                 <img 
                                   src={imagePreview} 
                                   alt="Preview" 
-                                  className="max-h-40 mx-auto rounded-lg object-contain"
+                                  className="mx-auto max-h-32 rounded-lg object-contain sm:max-h-40"
                                   data-testid="vehicle-image-preview"
                                 />
                                 <Button
@@ -1280,7 +1280,7 @@ export default function DashboardPage() {
                         </div>
 
                         {/* Brand & Model */}
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <div className="space-y-2">
                             <Label className="text-white/70">Merek *</Label>
                             <Input
@@ -1304,7 +1304,7 @@ export default function DashboardPage() {
                         </div>
 
                         {/* Year & Color */}
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <div className="space-y-2">
                             <Label className="text-white/70">Tahun</Label>
                             <Input
@@ -1326,7 +1326,7 @@ export default function DashboardPage() {
                         </div>
 
                         {/* Daily Rate & Status */}
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <div className="space-y-2">
                             <Label className="text-white/70">Tarif/Hari (Rp) *</Label>
                             <Input
@@ -1357,11 +1357,11 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      <DialogFooter>
+                      <DialogFooter className="gap-3 sm:gap-2">
                         <Button
                           variant="outline"
                           onClick={() => setIsAddVehicleOpen(false)}
-                          className="border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                          className="w-full border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white sm:w-auto"
                         >
                           Batal
                         </Button>
@@ -1369,7 +1369,7 @@ export default function DashboardPage() {
                           onClick={handleAddVehicle}
                           disabled={isUploading}
                           data-testid="vehicle-submit"
-                          className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white"
+                          className="w-full bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 sm:w-auto"
                         >
                           {isUploading ? (
                             <>

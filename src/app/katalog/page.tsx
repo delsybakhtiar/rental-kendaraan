@@ -54,6 +54,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { createWhatsAppUrl } from '@/lib/contact';
+import { cn } from '@/lib/utils';
 
 // Constants
 const DRIVER_FEE_PER_DAY = 150000;
@@ -153,6 +154,14 @@ function formatRupiah(amount: number): string {
     maximumFractionDigits: 0,
   }).format(amount);
 }
+
+const bookingCalendarClassNames = {
+  month_caption: 'text-slate-900',
+  caption_label: 'text-slate-900 font-semibold',
+  weekday: 'text-slate-500 font-medium',
+  outside: 'text-slate-300',
+  disabled: 'text-slate-300 opacity-50',
+};
 
 export default function KatalogPage() {
   const { toast } = useToast();
@@ -631,7 +640,7 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
 
       {/* Booking Modal */}
       <Dialog open={bookingModalOpen} onOpenChange={setBookingModalOpen}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md">
+        <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-lg overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 text-gray-900 sm:p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-gray-900">
               <Car className="h-5 w-5 text-blue-500" />
@@ -642,20 +651,31 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 mt-4">
+          <div className="mt-4 space-y-4 sm:space-y-5">
             {/* Date Selection */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
               <div className="space-y-2">
                 <Label className="text-gray-700">Tanggal Mulai</Label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full bg-gray-50 border-gray-200 text-gray-900 justify-start">
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        'h-11 w-full justify-start rounded-xl border-gray-200 bg-white px-4 text-left text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-50',
+                        !startDate && 'text-gray-500'
+                      )}
+                      data-testid="booking-start-date-trigger"
+                    >
                       <CalendarDays className="h-4 w-4 mr-2 text-gray-500" />
                       {startDate ? format(startDate, 'dd MMM yyyy', { locale: id }) : 'Pilih'}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 bg-white border-gray-200">
+                  <PopoverContent className="w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-gray-200 bg-white p-0 shadow-xl">
                     <Calendar
+                      themeVariant="light"
+                      buttonVariant="outline"
+                      className="w-full rounded-2xl bg-white p-3 text-slate-900"
+                      classNames={bookingCalendarClassNames}
                       mode="single"
                       selected={startDate}
                       onSelect={(date) => {
@@ -673,13 +693,24 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                 <Label className="text-gray-700">Tanggal Selesai</Label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full bg-gray-50 border-gray-200 text-gray-900 justify-start">
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        'h-11 w-full justify-start rounded-xl border-gray-200 bg-white px-4 text-left text-sm font-medium text-gray-900 shadow-sm hover:bg-gray-50',
+                        !endDate && 'text-gray-500'
+                      )}
+                      data-testid="booking-end-date-trigger"
+                    >
                       <CalendarDays className="h-4 w-4 mr-2 text-gray-500" />
                       {endDate ? format(endDate, 'dd MMM yyyy', { locale: id }) : 'Pilih'}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 bg-white border-gray-200">
+                  <PopoverContent className="w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-gray-200 bg-white p-0 shadow-xl">
                     <Calendar
+                      themeVariant="light"
+                      buttonVariant="outline"
+                      className="w-full rounded-2xl bg-white p-3 text-slate-900"
+                      classNames={bookingCalendarClassNames}
                       mode="single"
                       selected={endDate}
                       onSelect={setEndDate}
@@ -706,7 +737,7 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
             </div>
 
             {/* Customer Info */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
               <div className="space-y-2">
                 <Label className="text-gray-700">Nama</Label>
                 <Input
@@ -783,7 +814,7 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
 
       {/* Payment Modal */}
       <Dialog open={paymentModalOpen} onOpenChange={setPaymentModalOpen}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900 max-w-md">
+        <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-lg overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 text-gray-900 sm:p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-gray-900">
               <CreditCard className="h-5 w-5 text-amber-500" />
@@ -914,16 +945,27 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                 {/* Reschedule */}
                 <div className="pt-4 border-t border-gray-200 space-y-3">
                   <p className="text-sm text-gray-600 text-center">Butuh ubah jadwal?</p>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     <Popover>
                       <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="flex-1 bg-gray-50 border-gray-200 text-gray-600">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className={cn(
+                            'h-10 flex-1 justify-start rounded-xl border-gray-200 bg-white px-3 text-left text-gray-700 shadow-sm hover:bg-gray-50',
+                            !rescheduleDates.start && 'text-gray-500'
+                          )}
+                        >
                           <CalendarDays className="h-4 w-4 mr-1" />
                           {rescheduleDates.start ? format(rescheduleDates.start, 'dd MMM yyyy', { locale: id }) : 'Mulai'}
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 bg-white border-gray-200">
+                      <PopoverContent className="w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-gray-200 bg-white p-0 shadow-xl">
                         <Calendar
+                          themeVariant="light"
+                          buttonVariant="outline"
+                          className="w-full rounded-2xl bg-white p-3 text-slate-900"
+                          classNames={bookingCalendarClassNames}
                           mode="single"
                           selected={rescheduleDates.start}
                           onSelect={(date) => setRescheduleDates(prev => ({ ...prev, start: date }))}
@@ -933,13 +975,24 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                     </Popover>
                     <Popover>
                       <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="flex-1 bg-gray-50 border-gray-200 text-gray-600">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className={cn(
+                            'h-10 flex-1 justify-start rounded-xl border-gray-200 bg-white px-3 text-left text-gray-700 shadow-sm hover:bg-gray-50',
+                            !rescheduleDates.end && 'text-gray-500'
+                          )}
+                        >
                           <CalendarDays className="h-4 w-4 mr-1" />
                           {rescheduleDates.end ? format(rescheduleDates.end, 'dd MMM yyyy', { locale: id }) : 'Selesai'}
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 bg-white border-gray-200">
+                      <PopoverContent className="w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-gray-200 bg-white p-0 shadow-xl">
                         <Calendar
+                          themeVariant="light"
+                          buttonVariant="outline"
+                          className="w-full rounded-2xl bg-white p-3 text-slate-900"
+                          classNames={bookingCalendarClassNames}
                           mode="single"
                           selected={rescheduleDates.end}
                           onSelect={(date) => setRescheduleDates(prev => ({ ...prev, end: date }))}

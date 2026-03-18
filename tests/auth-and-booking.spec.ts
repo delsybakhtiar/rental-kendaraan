@@ -162,4 +162,44 @@ test.describe('Auth and public booking flows', () => {
       bookingToken: 'public-booking-token',
     });
   });
+
+  test('form pemesanan mobile menampilkan picker tanggal dengan teks yang jelas', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    await page.route('**/api/vehicles', (route) =>
+      mockJson(route, {
+        success: true,
+        data: [
+          {
+            id: 'vehicle-1',
+            plateNumber: 'BP 1234 AA',
+            brand: 'Toyota',
+            model: 'Avanza',
+            year: 2024,
+            color: 'Silver',
+            status: 'available',
+            dailyRate: 300000,
+          },
+        ],
+      }),
+    );
+
+    await page.goto('/katalog');
+    await page.getByRole('button', { name: 'Pesan' }).click();
+
+    const startTrigger = page.getByTestId('booking-start-date-trigger');
+    const endTrigger = page.getByTestId('booking-end-date-trigger');
+
+    await expect(startTrigger).toBeVisible();
+    await expect(endTrigger).toBeVisible();
+    await expect(startTrigger).toContainText('Pilih');
+
+    await startTrigger.click();
+
+    const calendar = page.locator('[data-slot="calendar"]').last();
+    const enabledDay = page.locator('[data-slot="calendar"] button:not([disabled])').first();
+
+    await expect(calendar).toBeVisible();
+    await expect(enabledDay).toHaveClass(/text-slate-900/);
+  });
 });
