@@ -9,7 +9,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"  // <--- GANTI INI DARI "sqlite"
+  provider = "postgresql" // <--- GANTI INI DARI "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -37,37 +37,43 @@ model User {
 // Vehicles Table - Menyimpan data unit mobil yang disewakan
 // ============================================
 model Vehicle {
-  id              String   @id @default(cuid())
-  plateNumber     String   @unique @map("plate_number")
-  model           String
-  brand           String
-  year            Int
-  color           String
-  status          String   @default("available") // 'available', 'rented', 'maintenance'
-  
+  id          String @id @default(cuid())
+  plateNumber String @unique @map("plate_number")
+  model       String
+  brand       String
+  year        Int
+  color       String
+  status      String @default("available") // 'available', 'rented', 'maintenance'
+
   // Location fields (adapted from GEOGRAPHY(POINT, 4326))
-  latitude        Float?
-  longitude       Float?
-  lastLocationAt  DateTime? @map("last_location_at")
-  
+  latitude       Float?
+  longitude      Float?
+  lastLocationAt DateTime? @map("last_location_at")
+  lastTrackedAt  DateTime? @map("last_tracked_at")
+  gpsStatus      String?   @default("offline") @map("gps_status")
+  deviceId       String?   @unique @map("device_id")
+  currentSpeed   Float?    @map("current_speed")
+  currentHeading Float?    @map("current_heading")
+  ignitionStatus Boolean?  @map("ignition_status")
+
   // Vehicle details
-  dailyRate       Decimal  @map("daily_rate") // Tarif sewa per hari (NUMERIC)
-  imageUrl        String?  @map("image_url")
-  
+  dailyRate Decimal @map("daily_rate") // Tarif sewa per hari (NUMERIC)
+  imageUrl  String? @map("image_url")
+
   // Engine Control (for security feature)
-  engineEnabled   Boolean  @default(true) @map("engine_enabled")
-  engineKilledAt  DateTime? @map("engine_killed_at")
-  engineKillReason String? @map("engine_kill_reason")
-  engineKilledBy  String?  @map("engine_killed_by") // User ID who killed engine
-  
+  engineEnabled    Boolean   @default(true) @map("engine_enabled")
+  engineKilledAt   DateTime? @map("engine_killed_at")
+  engineKillReason String?   @map("engine_kill_reason")
+  engineKilledBy   String?   @map("engine_killed_by") // User ID who killed engine
+
   // Stationary Tracking (for Port Watch feature)
-  stationarySince DateTime? @map("stationary_since")
-  stationaryLat   Float?   @map("stationary_lat")
-  stationaryLng   Float?   @map("stationary_lng")
-  stationaryAlertSent Boolean @default(false) @map("stationary_alert_sent")
-  
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  stationarySince     DateTime? @map("stationary_since")
+  stationaryLat       Float?    @map("stationary_lat")
+  stationaryLng       Float?    @map("stationary_lng")
+  stationaryAlertSent Boolean   @default(false) @map("stationary_alert_sent")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
   rentals         Rental[]
@@ -82,26 +88,33 @@ model Vehicle {
 // Tracking Logs Table - Data historis perjalanan mobil
 // ============================================
 model TrackingLog {
-  id         String   @id @default(cuid())
-  vehicleId  String   @map("vehicle_id")
-  
+  id        String @id @default(cuid())
+  vehicleId String @map("vehicle_id")
+
   // Location fields (adapted from GEOGRAPHY(POINT, 4326))
-  latitude   Float
-  longitude  Float
-  
-  speed      Float?   // Kecepatan dalam km/jam
-  heading    Float?   // Arah dalam derajat (0-360)
-  
+  latitude  Float
+  longitude Float
+
+  speed   Float? // Kecepatan dalam km/jam
+  heading Float? // Arah dalam derajat (0-360)
+
   recordedAt DateTime @default(now()) @map("recorded_at")
-  
+
   // Additional info
-  ignition   Boolean? @default(false) // Status mesin
-  fuel       Float?   // Level bahan bakar (persentase)
-  
+  ignition Boolean? @default(false) // Status mesin
+  fuel     Float? // Level bahan bakar (persentase)
+
+  // External sync status for reconciliation with tracking service
+  externalSyncStatus      String?   @default("local_only") @map("external_sync_status")
+  externalSyncAttempts    Int       @default(0) @map("external_sync_attempts")
+  externalSyncAttemptedAt DateTime? @map("external_sync_attempted_at")
+  externalSyncedAt        DateTime? @map("external_synced_at")
+  externalSyncError       String?   @map("external_sync_error")
+
   // Relations
-  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  userId     String?  @map("user_id")
-  user       User?    @relation(fields: [userId], references: [id])
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  userId  String? @map("user_id")
+  user    User?   @relation(fields: [userId], references: [id])
 
   @@index([vehicleId])
   @@index([recordedAt])
@@ -112,39 +125,39 @@ model TrackingLog {
 // Geofences Table - Area aman/zona yang diperbolehkan
 // ============================================
 model Geofence {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
   description String?
-  
+
   // Polygon coordinates stored as JSON
   // Format: [[lng, lat], [lng, lat], ...] (closed polygon)
-  coordinates String  // JSON array of coordinate pairs
-  
-  isActive    Boolean  @default(true) @map("is_active")
-  color       String   @default("#22c55e") // Warna pada peta
-  
+  coordinates String // JSON array of coordinate pairs
+
+  isActive Boolean @default(true) @map("is_active")
+  color    String  @default("#22c55e") // Warna pada peta
+
   // Geofence type
   // 'island_boundary' - Main safe zone (Bintan Island)
   // 'port_watch' - Port areas for stationary monitoring
   // 'restricted' - Restricted areas
-  type        String   @default("safe")
-  
+  type String @default("safe")
+
   // Alert settings
-  alertOnEntry  Boolean @default(false) @map("alert_on_entry")
-  alertOnExit   Boolean @default(true) @map("alert_on_exit")
-  
+  alertOnEntry Boolean @default(false) @map("alert_on_entry")
+  alertOnExit  Boolean @default(true) @map("alert_on_exit")
+
   // Alert level for this geofence
   // 'low', 'medium', 'high', 'critical'
-  alertLevel    String  @default("medium") @map("alert_level")
-  
+  alertLevel String @default("medium") @map("alert_level")
+
   // Port Watch settings (for type='port_watch')
   stationaryThresholdMinutes Int? @map("stationary_threshold_minutes") // Default 30 minutes
-  
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  alerts      GeofenceAlert[]
+  alerts GeofenceAlert[]
 
   @@map("geofences")
 }
@@ -153,32 +166,32 @@ model Geofence {
 // Geofence Alerts - Log peringatan geofence
 // ============================================
 model GeofenceAlert {
-  id         String   @id @default(cuid())
-  geofenceId String?  @map("geofence_id") // Optional for engine_kill alerts
-  vehicleId  String?  @map("vehicle_id")
-  
-  alertType  String   @map("alert_type") // 'entry', 'exit', 'stationary', 'engine_kill'
-  message    String
-  
+  id         String  @id @default(cuid())
+  geofenceId String? @map("geofence_id") // Optional for engine_kill alerts
+  vehicleId  String? @map("vehicle_id")
+
+  alertType String @map("alert_type") // 'entry', 'exit', 'stationary', 'engine_kill'
+  message   String
+
   // Alert severity level
   // 'low' - Info only
   // 'medium' - Warning
   // 'high' - Urgent attention needed
   // 'critical' - Immediate action required (e.g., island exit)
-  alertLevel String  @default("medium") @map("alert_level")
-  
-  locationLat Float?  @map("location_lat")
-  locationLng Float?  @map("location_lng")
-  
-  isResolved Boolean  @default(false) @map("is_resolved")
+  alertLevel String @default("medium") @map("alert_level")
+
+  locationLat Float? @map("location_lat")
+  locationLng Float? @map("location_lng")
+
+  isResolved Boolean   @default(false) @map("is_resolved")
   resolvedAt DateTime? @map("resolved_at")
-  resolvedBy String?  @map("resolved_by") // User ID who resolved
-  
-  createdAt  DateTime @default(now()) @map("created_at")
-  
+  resolvedBy String?   @map("resolved_by") // User ID who resolved
+
+  createdAt DateTime @default(now()) @map("created_at")
+
   // Relations
-  geofence   Geofence? @relation(fields: [geofenceId], references: [id], onDelete: Cascade)
-  vehicle    Vehicle?  @relation(fields: [vehicleId], references: [id])
+  geofence Geofence? @relation(fields: [geofenceId], references: [id], onDelete: Cascade)
+  vehicle  Vehicle?  @relation(fields: [vehicleId], references: [id])
 
   @@index([vehicleId])
   @@index([alertLevel])
@@ -191,38 +204,38 @@ model GeofenceAlert {
 // Pending Bookings - Pesanan pending dengan timer
 // ============================================
 model PendingBooking {
-  id              String   @id @default(cuid())
-  vehicleId       String   @map("vehicle_id")
-  
+  id        String @id @default(cuid())
+  vehicleId String @map("vehicle_id")
+
   // Booking details
-  startDate       DateTime @map("start_date")
-  endDate         DateTime @map("end_date")
-  duration        Int      // in days
-  
+  startDate DateTime @map("start_date")
+  endDate   DateTime @map("end_date")
+  duration  Int // in days
+
   // Pricing
-  basePrice       Decimal  @map("base_price")
-  driverFee       Decimal  @default(0) @map("driver_fee")
-  totalAmount     Decimal  @map("total_amount")
-  
+  basePrice   Decimal @map("base_price")
+  driverFee   Decimal @default(0) @map("driver_fee")
+  totalAmount Decimal @map("total_amount")
+
   // Options
-  rentalOption    String   @map("rental_option") // 'lepas-kunci' or 'dengan-sopir'
-  pickupLocation  String?  @map("pickup_location")
-  
+  rentalOption   String  @map("rental_option") // 'lepas-kunci' or 'dengan-sopir'
+  pickupLocation String? @map("pickup_location")
+
   // Timer (30 minutes from creation)
-  expiresAt       DateTime @map("expires_at")
-  
+  expiresAt DateTime @map("expires_at")
+
   // Status: 'pending', 'paid', 'cancelled', 'expired'
-  status          String   @default("pending")
-  
+  status String @default("pending")
+
   // Customer info (optional, for walk-in customers)
-  customerName    String?  @map("customer_name")
-  customerPhone   String?  @map("customer_phone")
-  
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  
+  customerName  String? @map("customer_name")
+  customerPhone String? @map("customer_phone")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   // Relations
-  vehicle         Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
   @@index([vehicleId])
   @@index([status])
@@ -234,31 +247,31 @@ model PendingBooking {
 // Rentals Table - Data penyewaan
 // ============================================
 model Rental {
-  id          String   @id @default(cuid())
-  vehicleId   String   @map("vehicle_id")
-  userId      String   @map("user_id")
-  
-  startDate   DateTime @map("start_date")
-  endDate     DateTime @map("end_date")
+  id        String @id @default(cuid())
+  vehicleId String @map("vehicle_id")
+  userId    String @map("user_id")
+
+  startDate     DateTime  @map("start_date")
+  endDate       DateTime  @map("end_date")
   actualEndDate DateTime? @map("actual_end_date")
-  
-  totalAmount Decimal  @map("total_amount") // NUMERIC
-  deposit     Decimal  @default(0) // NUMERIC
-  
-  status      String   @default("active") // 'active', 'completed', 'cancelled'
-  
+
+  totalAmount Decimal @map("total_amount") // NUMERIC
+  deposit     Decimal @default(0) // NUMERIC
+
+  status String @default("active") // 'active', 'completed', 'cancelled'
+
   // Odometer readings
-  startOdometer Float?  @map("start_odometer")
-  endOdometer   Float?  @map("end_odometer")
-  
-  notes       String?
-  
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  startOdometer Float? @map("start_odometer")
+  endOdometer   Float? @map("end_odometer")
+
+  notes String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id])
-  user        User     @relation(fields: [userId], references: [id])
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([vehicleId])

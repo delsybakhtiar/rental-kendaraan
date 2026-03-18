@@ -1,16 +1,33 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { serializeData } from '@/lib/utils-serializer';
+import { authenticateRequest, authorizeRole } from '@/lib/jwt';
+
+function getBookingNotesToken(notes: string | null): string | null {
+  if (!notes) return null;
+
+  try {
+    const parsed = JSON.parse(notes) as { bookingToken?: string };
+    return parsed.bookingToken || null;
+  } catch {
+    return null;
+  }
+}
+
+function isAdminRequest(request: NextRequest): boolean {
+  const authResult = authenticateRequest(request);
+  return !!(authResult.success && authResult.user && authorizeRole(authResult.user, ['admin']));
+}
 
 // PATCH /api/bookings/[id] - Update booking status
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const { status } = body;
+    const { status, bookingToken } = body;
 
     console.log(`📝 PATCH /api/bookings/${id} - Status: ${status}`);
 
@@ -25,6 +42,17 @@ export async function PATCH(
       return NextResponse.json(
         { success: false, message: 'Booking tidak ditemukan' },
         { status: 404 }
+      );
+    }
+
+    const isAdmin = isAdminRequest(request);
+    const storedBookingToken = getBookingNotesToken(rental.notes);
+    const isAuthorizedGuest = !!bookingToken && !!storedBookingToken && bookingToken === storedBookingToken;
+
+    if (!isAdmin && !isAuthorizedGuest) {
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized booking access' },
+        { status: 401 }
       );
     }
 
@@ -184,7 +212,7 @@ export async function PATCH(
 
 // GET /api/bookings/[id] - Get specific booking
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -202,6 +230,17 @@ export async function GET(
       return NextResponse.json(
         { success: false, message: 'Booking tidak ditemukan' },
         { status: 404 }
+      );
+    }
+
+    const isAdmin = isAdminRequest(request);
+    const bookingToken = new URL(request.url).searchParams.get('bookingToken');
+    const storedBookingToken = getBookingNotesToken(rental.notes);
+
+    if (!isAdmin && (!bookingToken || bookingToken !== storedBookingToken)) {
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized booking access' },
+        { status: 401 }
       );
     }
 

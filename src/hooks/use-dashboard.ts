@@ -1,12 +1,31 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { DashboardStats, Vehicle, TrackingLog, Geofence, GeofenceAlert } from '@/types';
+import type { DashboardStats, Vehicle, TrackingLog, Geofence, GeofenceAlert, TrackingStatus } from '@/types';
+
+function getAuthHeaders(init?: HeadersInit): HeadersInit {
+  if (typeof window === 'undefined') {
+    return init || {};
+  }
+
+  const token = window.localStorage.getItem('token');
+
+  if (!token) {
+    return init || {};
+  }
+
+  return {
+    ...init,
+    Authorization: `Bearer ${token}`,
+  };
+}
 
 // Dashboard data hook
 export function useDashboard() {
   return useQuery<DashboardStats>({
     queryKey: ['dashboard'],
     queryFn: async () => {
-      const res = await fetch('/api/dashboard');
+      const res = await fetch('/api/dashboard', {
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error('Failed to fetch dashboard');
       return res.json();
     },
@@ -21,7 +40,9 @@ export function useVehicles(status?: string) {
     queryKey: ['vehicles', status],
     queryFn: async () => {
       const url = status ? `/api/vehicles?status=${status}` : '/api/vehicles';
-      const res = await fetch(url);
+      const res = await fetch(url, {
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error('Failed to fetch vehicles');
       const json = await res.json();
       // Handle both array response and {success, data} response format
@@ -34,7 +55,9 @@ export function useVehicle(id: string) {
   return useQuery<Vehicle & { trackingLogs: TrackingLog[] }>({
     queryKey: ['vehicle', id],
     queryFn: async () => {
-      const res = await fetch(`/api/vehicles/${id}`);
+      const res = await fetch(`/api/vehicles/${id}`, {
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error('Failed to fetch vehicle');
       return res.json();
     },
@@ -49,7 +72,7 @@ export function useCreateVehicle() {
     mutationFn: async (data: Partial<Vehicle>) => {
       const res = await fetch('/api/vehicles', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error('Failed to create vehicle');
@@ -69,7 +92,7 @@ export function useUpdateVehicle() {
     mutationFn: async ({ id, data }: { id: string; data: Partial<Vehicle> }) => {
       const res = await fetch(`/api/vehicles/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error('Failed to update vehicle');
@@ -87,7 +110,10 @@ export function useDeleteVehicle() {
   
   return useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/vehicles/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/vehicles/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error('Failed to delete vehicle');
       return res.json();
     },
@@ -107,11 +133,26 @@ export function useTrackingLogs(vehicleId?: string, hours = 24) {
   }>({
     queryKey: ['tracking', vehicleId, hours],
     queryFn: async () => {
-      const res = await fetch(`/api/tracking/${vehicleId}?hours=${hours}`);
+      const res = await fetch(`/api/tracking/${vehicleId}?hours=${hours}`, {
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error('Failed to fetch tracking logs');
       return res.json();
     },
     enabled: !!vehicleId,
+  });
+}
+
+export function useTrackingStatus() {
+  return useQuery<TrackingStatus>({
+    queryKey: ['tracking-status'],
+    queryFn: async () => {
+      const res = await fetch('/api/tracking/status', {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error('Failed to fetch tracking logs');
+      return res.json();
+    },
   });
 }
 
@@ -122,7 +163,7 @@ export function useCreateTrackingLog() {
     mutationFn: async (data: Partial<TrackingLog>) => {
       const res = await fetch('/api/tracking', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error('Failed to create tracking log');
@@ -141,7 +182,9 @@ export function useGeofences(isActive?: boolean) {
     queryKey: ['geofences', isActive],
     queryFn: async () => {
       const url = isActive !== undefined ? `/api/geofences?isActive=${isActive}` : '/api/geofences';
-      const res = await fetch(url);
+      const res = await fetch(url, {
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error('Failed to fetch geofences');
       const json = await res.json();
       // Handle both array response and {success, data} response format
@@ -157,7 +200,7 @@ export function useCreateGeofence() {
     mutationFn: async (data: Partial<Geofence>) => {
       const res = await fetch('/api/geofences', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error('Failed to create geofence');
@@ -177,7 +220,7 @@ export function useUpdateGeofence() {
     mutationFn: async ({ id, data }: { id: string; data: Partial<Geofence> }) => {
       const res = await fetch(`/api/geofences/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error('Failed to update geofence');
@@ -195,7 +238,10 @@ export function useDeleteGeofence() {
   
   return useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/geofences/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/geofences/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error('Failed to delete geofence');
       return res.json();
     },
@@ -212,7 +258,9 @@ export function useAlerts(isResolved?: boolean) {
     queryKey: ['alerts', isResolved],
     queryFn: async () => {
       const url = isResolved !== undefined ? `/api/geofences/alerts?isResolved=${isResolved}` : '/api/geofences/alerts';
-      const res = await fetch(url);
+      const res = await fetch(url, {
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error('Failed to fetch alerts');
       const json = await res.json();
       // Handle both array response and {success, data} response format
@@ -228,7 +276,7 @@ export function useResolveAlert() {
     mutationFn: async (alertId: string) => {
       const res = await fetch('/api/geofences/alerts', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ alertId }),
       });
       if (!res.ok) throw new Error('Failed to resolve alert');

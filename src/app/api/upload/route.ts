@@ -1,7 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/jwt';
 
-export async function POST(request: Request): Promise<NextResponse> {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
+    }
+
     const formData = await request.formData();
     const file = formData.get('file') as File;
 
@@ -33,6 +39,16 @@ export async function POST(request: Request): Promise<NextResponse> {
     const timestamp = Date.now();
     const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
     const filename = `vehicle-${timestamp}-${Math.random().toString(36).substring(7)}.${ext}`;
+
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      return NextResponse.json(
+        {
+          error: "Upload gagal: BLOB_READ_WRITE_TOKEN belum dikonfigurasi.",
+          success: false,
+        },
+        { status: 500 }
+      );
+    }
 
     try {
       // Try Vercel Blob

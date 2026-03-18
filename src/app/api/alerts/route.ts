@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Get vehicle info
-    const vehicleIds = [...new Set(alerts.map((a) => a.vehicleId))];
+    const vehicleIds = [...new Set(alerts.map((a) => a.vehicleId).filter((id): id is string => !!id))];
     const vehicles = vehicleIds.length > 0 ? await db.vehicle.findMany({
       where: { id: { in: vehicleIds } },
       select: {
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
 
     const alertsWithVehicle = alerts.map((alert) => ({
       id: alert.id,
-      vehicle: vehicleMap.get(alert.vehicleId) || null,
+      vehicle: alert.vehicleId ? vehicleMap.get(alert.vehicleId) || null : null,
       geofence: alert.geofence,
       alertType: alert.alertType,
       message: alert.message,

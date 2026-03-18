@@ -1,13 +1,22 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { syncPersistedGpsStatuses, withDerivedGpsStatus } from '@/lib/tracking';
 import { serializeData } from '@/lib/utils-serializer';
+import { requireAdmin } from '@/lib/jwt';
 
 // GET /api/vehicles/[id] - Get single vehicle
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
+    }
+
+    await syncPersistedGpsStatuses();
+
     const { id } = await params;
 
     const vehicle = await db.vehicle.findUnique({
@@ -29,7 +38,7 @@ export async function GET(
       return NextResponse.json({ error: 'Vehicle not found' }, { status: 404 });
     }
 
-    return NextResponse.json(serializeData(vehicle));
+    return NextResponse.json(serializeData(withDerivedGpsStatus(vehicle)));
   } catch (error) {
     console.error('Error fetching vehicle:', error);
     return NextResponse.json(
@@ -41,17 +50,44 @@ export async function GET(
 
 // PUT /api/vehicles/[id] - Update vehicle
 export async function PUT(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
+    }
+
     const { id } = await params;
     const body = await request.json();
+    const normalizedDeviceId = typeof body.deviceId === 'string' ? body.deviceId.trim() : body.deviceId;
+
+    if (normalizedDeviceId) {
+      const existingVehicle = await db.vehicle.findFirst({
+        where: {
+          deviceId: normalizedDeviceId,
+          id: { not: id },
+        },
+        select: { id: true, plateNumber: true },
+      });
+
+      if (existingVehicle) {
+        return NextResponse.json(
+          {
+            error: 'Device ID already assigned',
+            message: `Device ${normalizedDeviceId} sudah terhubung ke kendaraan ${existingVehicle.plateNumber}`,
+          },
+          { status: 409 },
+        );
+      }
+    }
 
     const vehicle = await db.vehicle.update({
       where: { id },
       data: {
         ...body,
+        deviceId: normalizedDeviceId ? normalizedDeviceId : null,
         lastLocationAt: body.latitude && body.longitude ? new Date() : undefined,
       },
     });
@@ -68,10 +104,15 @@ export async function PUT(
 
 // DELETE /api/vehicles/[id] - Delete vehicle
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
+    }
+
     const { id } = await params;
 
     await db.vehicle.delete({

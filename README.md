@@ -6,10 +6,14 @@ Sistem rental mobil dengan fitur GPS Tracking, Geofencing, dan Engine Kill Remot
 
 - **Frontend**: Next.js 16, React 19, TypeScript
 - **Styling**: Tailwind CSS 4, shadcn/ui
-- **Database**: SQLite dengan Prisma ORM
+- **Database**: PostgreSQL dengan Prisma ORM
 - **Maps**: Leaflet, React-Leaflet
 - **Icons**: Lucide React
 - **Date Handling**: date-fns
+
+## Production
+
+Checklist deploy production ada di [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ## 📁 Struktur Folder
 
@@ -94,10 +98,7 @@ npm run db:studio
 
 Buat file `.env` di root folder:
 
-```env
-DATABASE_URL="file:./dev.db"
-JWT_SECRET="your-secret-key-here"
-```
+Lihat [.env.example](./.env.example).
 
 ### 5. Run Development Server
 
@@ -142,6 +143,7 @@ npm run start        # Start production server
 npm run lint         # Run ESLint
 npm run db:push      # Push schema to database
 npm run db:generate  # Generate Prisma client
+npm run db:migrate:deploy # Apply production migrations
 npm run db:studio    # Open Prisma Studio
 ```
 

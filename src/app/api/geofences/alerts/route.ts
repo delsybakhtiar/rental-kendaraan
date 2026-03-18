@@ -1,9 +1,15 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireAdmin } from '@/lib/jwt';
 
 // GET /api/geofences/alerts - Get all geofence alerts
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
+    }
+
     const { searchParams } = new URL(request.url);
     const isResolved = searchParams.get('isResolved');
     const vehicleId = searchParams.get('vehicleId');
@@ -28,17 +34,17 @@ export async function GET(request: Request) {
     });
 
     // Get vehicle info separately
-    const vehicleIds = [...new Set(alerts.map((a) => a.vehicleId))];
-    const vehicles = await db.vehicle.findMany({
+    const vehicleIds = [...new Set(alerts.map((a) => a.vehicleId).filter((id): id is string => !!id))];
+    const vehicles = vehicleIds.length > 0 ? await db.vehicle.findMany({
       where: { id: { in: vehicleIds } },
       select: { id: true, plateNumber: true, model: true, brand: true },
-    });
+    }) : [];
 
     const vehiclesMap = new Map(vehicles.map((v) => [v.id, v]));
 
     const alertsWithVehicle = alerts.map((alert) => ({
       ...alert,
-      vehicle: vehiclesMap.get(alert.vehicleId),
+      vehicle: alert.vehicleId ? vehiclesMap.get(alert.vehicleId) : undefined,
     }));
 
     return NextResponse.json(alertsWithVehicle);
@@ -52,8 +58,13 @@ export async function GET(request: Request) {
 }
 
 // PUT /api/geofences/alerts - Resolve an alert
-export async function PUT(request: Request) {
+export async function PUT(request: NextRequest) {
   try {
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
+    }
+
     const body = await request.json();
     const { alertId } = body;
 

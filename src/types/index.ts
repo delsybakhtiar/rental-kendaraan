@@ -11,6 +11,12 @@ export interface Vehicle {
   latitude: number | null;
   longitude: number | null;
   lastLocationAt: Date | null;
+  lastTrackedAt: Date | null;
+  gpsStatus: string | null;
+  deviceId: string | null;
+  currentSpeed: number | null;
+  currentHeading: number | null;
+  ignitionStatus: boolean | null;
   dailyRate: number; // Always serialized to number
   imageUrl: string | null;
   // Engine Control
@@ -39,6 +45,11 @@ export interface TrackingLog {
   recordedAt: Date;
   ignition: boolean | null;
   fuel: number | null;
+  externalSyncStatus?: string | null;
+  externalSyncAttempts?: number;
+  externalSyncAttemptedAt?: Date | null;
+  externalSyncedAt?: Date | null;
+  externalSyncError?: string | null;
   vehicle?: {
     plateNumber: string;
     model: string;
@@ -130,17 +141,35 @@ export interface DashboardStats {
     totalDeposit: number;
     avgDailyRate: number;
   };
+  gpsIntegrationMode?: 'demo' | 'production';
 }
 
 // Tracking Status from API
 export interface TrackingStatus {
-  alerts: {
-    critical: number;
-    high: number;
-  };
   vehicles: {
     total: number;
-    outside_island: number;
-    engine_killed: number;
+    withLocation: number;
+    outsideOperationalArea: number;
+    engineKilled: number;
+  };
+  gps: {
+    online: number;
+    stale: number;
+    offline: number;
+  };
+  tracking: {
+    recentPointsLastHour: number;
+  };
+  sync: {
+    pending: number;
+    exhausted: number;
+    oldestPendingMinutes: number;
+  };
+  externalService: {
+    configuredUrl: string;
+    status: 'healthy' | 'degraded' | 'offline' | 'unknown';
+    reachable: boolean;
+    httpStatus: number | null;
+    details: unknown;
   };
 }

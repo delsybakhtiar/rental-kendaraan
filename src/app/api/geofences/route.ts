@@ -1,9 +1,15 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireAdmin } from '@/lib/jwt';
 
 // GET /api/geofences - Get all geofences
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
+    }
+
     const { searchParams } = new URL(request.url);
     const isActive = searchParams.get('isActive');
 
@@ -36,8 +42,13 @@ export async function GET(request: Request) {
 }
 
 // POST /api/geofences - Create new geofence
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
+    }
+
     const body = await request.json();
     const {
       name,

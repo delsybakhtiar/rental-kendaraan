@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { authenticateRequest } from '@/lib/jwt';
+import { authenticateRequest, requireAdmin } from '@/lib/jwt';
 import { serializeData } from '@/lib/utils-serializer';
+import { ingestTrackingPayload, validateTrackingPayload, findTrackableVehicle } from '@/lib/tracking';
 
 /**
  * @route   GET /api/tracking
  * @desc    Get all tracking logs with filters
- * @access  Private (requires JWT)
+ * @access  Private (JWT admin or signed GPS device)
  * 
  * Query params:
  * - vehicleId: string
@@ -83,8 +84,8 @@ export async function GET(request: NextRequest) {
 
 /**
  * @route   POST /api/tracking
- * @desc    Create new tracking log (for GPS device integration)
- * @access  Private (requires JWT)
+ * @desc    Create new tracking log manually (internal/admin)
+ * @access  Private (admin JWT)
  * 
  * Request body:
  * {
@@ -99,89 +100,72 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    // Authenticate request
-    const authResult = authenticateRequest(request);
-    
+    const rawBody = await request.text();
+    let body: unknown;
+
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Validation failed',
+          message: 'Request body must be valid JSON',
+        },
+        { status: 400 }
+      );
+    }
+
+    const validation = validateTrackingPayload(body);
+    if (!validation.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Validation failed',
+          message: validation.message,
+        },
+        { status: 400 }
+      );
+    }
+    const { payload } = validation;
+
+    const authResult = requireAdmin(request);
     if (!authResult.success || !authResult.user) {
       return authResult.response || NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
       );
     }
-
-    const body = await request.json();
-    const { vehicleId, latitude, longitude, speed, heading, ignition, fuel } = body;
     const userId = authResult.user.userId;
 
-    // Validate required fields
-    if (!vehicleId || typeof latitude !== 'number' || typeof longitude !== 'number') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Validation failed',
-          message: 'vehicleId, latitude, and longitude are required',
-        },
-        { status: 400 }
-      );
-    }
-
-    // Validate coordinate ranges
-    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Validation failed',
-          message: 'Invalid coordinates. Latitude must be between -90 and 90, longitude between -180 and 180',
-        },
-        { status: 400 }
-      );
-    }
-
-    // Check if vehicle exists
-    const vehicle = await db.vehicle.findUnique({
-      where: { id: vehicleId },
-      select: { id: true, plateNumber: true },
-    });
-
+    const vehicle = await findTrackableVehicle(payload.vehicleId);
     if (!vehicle) {
       return NextResponse.json(
         {
           success: false,
           error: 'Vehicle not found',
-          message: `Vehicle with ID ${vehicleId} does not exist`,
+          message: `Vehicle with ID ${payload.vehicleId} does not exist`,
         },
         { status: 404 }
       );
     }
 
-    // Create tracking log
-    const log = await db.trackingLog.create({
-      data: {
-        vehicleId,
-        latitude,
-        longitude,
-        speed: speed ?? null,
-        heading: heading ?? null,
-        ignition: ignition ?? false,
-        fuel: fuel ?? null,
-        userId,
-      },
-    });
-
-    // Update vehicle current location
-    await db.vehicle.update({
-      where: { id: vehicleId },
-      data: {
-        latitude,
-        longitude,
-        lastLocationAt: new Date(),
-      },
-    });
+    const result = await ingestTrackingPayload(payload, userId, vehicle);
+    if (!result) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Vehicle not found',
+          message: `Vehicle with ID ${payload.vehicleId} does not exist`,
+        },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
       message: 'Tracking log created successfully',
-      data: serializeData(log),
+      data: serializeData(result.log),
     }, { status: 201 });
   } catch (error) {
     console.error('Error creating tracking log:', error);

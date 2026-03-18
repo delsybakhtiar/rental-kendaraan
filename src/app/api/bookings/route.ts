@@ -1,6 +1,8 @@
-import { NextResponse } from 'next/server';
+import { randomUUID } from 'node:crypto';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { serializeData } from '@/lib/utils-serializer';
+import { requireAdmin } from '@/lib/jwt';
 
 // POST /api/bookings - Create a new booking
 export async function POST(request: Request) {
@@ -71,6 +73,7 @@ export async function POST(request: Request) {
 
     // Calculate expiry time (30 minutes from now)
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    const bookingToken = randomUUID();
 
     // Create the rental with pending status
     const rental = await db.rental.create({
@@ -91,6 +94,7 @@ export async function POST(request: Request) {
           customerName: customerName || 'Guest',
           customerPhone: customerPhone || '',
           expiresAt: expiresAt.toISOString(),
+          bookingToken,
         }),
       },
       include: {
@@ -125,6 +129,7 @@ export async function POST(request: Request) {
       customerName: customerName || 'Guest',
       customerPhone: customerPhone || '',
       expiresAt: expiresAt.toISOString(),
+      bookingToken,
       status: 'pending',
       createdAt: rental.createdAt.toISOString(),
     };
@@ -144,8 +149,13 @@ export async function POST(request: Request) {
 }
 
 // GET /api/bookings - Get all bookings (for admin)
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
+    }
+
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
 

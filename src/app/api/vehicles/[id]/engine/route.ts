@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { serializeData } from '@/lib/utils-serializer';
+import { requireAdmin } from '@/lib/jwt';
 
 /**
  * @route   POST /api/vehicles/[id]/engine
@@ -13,15 +14,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: vehicleId } = await params;
-    const authHeader = request.headers.get('authorization');
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized', message: 'No token provided' },
-        { status: 401 }
-      );
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
     }
+
+    const { id: vehicleId } = await params;
 
     const body = await request.json().catch(() => ({}));
     const { reason } = body;
@@ -56,7 +54,7 @@ export async function POST(
     }
 
     // Kill engine and set status to emergency
-    const updatedVehicle = await db.vehicle.update({
+    await db.vehicle.update({
       where: { id: vehicleId },
       data: {
         engineEnabled: false,
@@ -121,15 +119,12 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: vehicleId } = await params;
-    const authHeader = request.headers.get('authorization');
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized', message: 'No token provided' },
-        { status: 401 }
-      );
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
     }
+
+    const { id: vehicleId } = await params;
 
     // Get vehicle
     const vehicle = await db.vehicle.findUnique({
@@ -166,7 +161,7 @@ export async function PUT(
     const newStatus = vehicle.rentals.length > 0 ? 'rented' : 'available';
 
     // Restore engine and reset status
-    const updatedVehicle = await db.vehicle.update({
+    await db.vehicle.update({
       where: { id: vehicleId },
       data: {
         engineEnabled: true,

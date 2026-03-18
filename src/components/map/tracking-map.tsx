@@ -5,19 +5,25 @@ import { MapContainer, TileLayer, Marker, Popup, Polygon, Polyline, useMap } fro
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { Vehicle, Geofence, TrackingLog } from '@/types';
+import { isInsideOperationalArea } from '@/lib/operational-area';
 
 // Fix for default marker icons in Leaflet with Next.js
-const createIcon = (color: string, isOutsideZone: boolean = false, isEmergency: boolean = false) => {
+const createIcon = (
+  color: string,
+  plateNumber: string,
+  isOutsideZone: boolean = false,
+  isEmergency: boolean = false,
+) => {
   const alertRing = (isOutsideZone || isEmergency) ? `
     <div style="
       position: absolute;
-      width: 40px;
-      height: 40px;
+      width: 56px;
+      height: 56px;
       border-radius: 50%;
       border: 3px solid ${isEmergency ? '#dc2626' : '#ef4444'};
       animation: pulse 1.5s ease-in-out infinite;
-      top: -4px;
-      left: -4px;
+      top: -10px;
+      left: 4px;
     "></div>
     <style>
       @keyframes pulse {
@@ -28,13 +34,11 @@ const createIcon = (color: string, isOutsideZone: boolean = false, isEmergency: 
     </style>
   ` : '';
 
-  // Emergency vehicle shows lock icon
-  const vehicleIcon = isEmergency ? '🔒' : '🚗';
   const emergencyOverlay = isEmergency ? `
     <div style="
       position: absolute;
-      top: -8px;
-      right: -8px;
+      top: -12px;
+      right: -6px;
       background: #dc2626;
       color: white;
       font-size: 8px;
@@ -45,36 +49,64 @@ const createIcon = (color: string, isOutsideZone: boolean = false, isEmergency: 
     ">STOPPED</div>
   ` : '';
 
+  const carBodyColor = isEmergency ? '#111827' : color;
+
   return L.divIcon({
     className: 'custom-marker',
     html: `
-      <div style="position: relative;">
+      <div style="position: relative; width: 64px; height: 68px;">
         ${alertRing}
         <div style="
-          width: 32px;
-          height: 32px;
-          background: ${isEmergency ? '#1f2937' : color};
-          border-radius: 50% 50% 50% 0;
-          transform: rotate(-45deg);
-          border: 3px solid ${isEmergency ? '#dc2626' : isOutsideZone ? '#ef4444' : 'white'};
-          box-shadow: ${isEmergency ? '0 0 20px rgba(220, 38, 38, 0.8)' : isOutsideZone ? '0 0 15px rgba(239, 68, 68, 0.7)' : '0 2px 8px rgba(0,0,0,0.3)'};
+          position: absolute;
+          top: 8px;
+          left: 8px;
+          width: 48px;
+          height: 28px;
+          background: ${carBodyColor};
+          border-radius: 10px 12px 10px 10px;
+          border: 2px solid ${isEmergency ? '#dc2626' : isOutsideZone ? '#ef4444' : 'rgba(255,255,255,0.85)'};
+          box-shadow: ${isEmergency ? '0 0 20px rgba(220, 38, 38, 0.8)' : isOutsideZone ? '0 0 16px rgba(239, 68, 68, 0.65)' : '0 8px 18px rgba(0,0,0,0.35)'};
           display: flex;
           align-items: center;
           justify-content: center;
+          overflow: hidden;
         ">
-          <div style="
-            transform: rotate(45deg);
-            color: white;
-            font-weight: bold;
-            font-size: 10px;
-          ">${vehicleIcon}</div>
+          <svg width="34" height="18" viewBox="0 0 68 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M14 9C15.2 5.8 18.3 4 21.7 4H45.4C48.6 4 51.6 5.7 53 8.6L57.7 18H61C64.3 18 67 20.7 67 24V25C67 28.3 64.3 31 61 31H58.2C57.5 33.9 55 36 52 36C49 36 46.5 33.9 45.8 31H22.2C21.5 33.9 19 36 16 36C13 36 10.5 33.9 9.8 31H7C3.7 31 1 28.3 1 25V23.8C1 20.5 3.7 17.8 7 17.8H10.5L14 9Z" fill="white" fill-opacity="0.92"/>
+            <path d="M20 9.5H46.2C47.8 9.5 49.2 10.4 49.9 11.8L52.1 16H15.1L17.1 11.8C17.8 10.4 19.3 9.5 20.9 9.5H20Z" fill="${carBodyColor}"/>
+            <circle cx="16" cy="30" r="4.5" fill="#0F172A"/>
+            <circle cx="52" cy="30" r="4.5" fill="#0F172A"/>
+          </svg>
+        </div>
+        <div style="
+          position: absolute;
+          top: 40px;
+          left: 50%;
+          transform: translateX(-50%);
+          min-width: 58px;
+          max-width: 78px;
+          padding: 3px 6px;
+          border-radius: 999px;
+          background: rgba(10, 10, 15, 0.9);
+          border: 1px solid ${isEmergency ? 'rgba(220, 38, 38, 0.6)' : isOutsideZone ? 'rgba(239, 68, 68, 0.45)' : 'rgba(255,255,255,0.18)'};
+          color: white;
+          font-size: 9px;
+          font-weight: 700;
+          line-height: 1;
+          letter-spacing: 0.04em;
+          text-align: center;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+          overflow: hidden;
+          backdrop-filter: blur(8px);
+        ">${plateNumber}</div>
         </div>
         ${emergencyOverlay}
       </div>
     `,
-    iconSize: [32, 32],
-    iconAnchor: [16, 32],
-    popupAnchor: [0, -32],
+    iconSize: [64, 68],
+    iconAnchor: [32, 46],
+    popupAnchor: [0, -42],
   });
 };
 
@@ -84,22 +116,6 @@ const vehicleStatusColors: Record<string, string> = {
   maintenance: '#f59e0b',
   emergency: '#dc2626', // Red for emergency
 };
-
-// Bintan Island boundary (approximate)
-const BINTAN_BOUNDS = {
-  minLat: 0.75,
-  maxLat: 1.35,
-  minLng: 104.1,
-  maxLng: 104.95,
-};
-
-// Check if a point is inside Bintan Island
-function isInsideBintan(lat: number, lng: number): boolean {
-  return lat >= BINTAN_BOUNDS.minLat && 
-         lat <= BINTAN_BOUNDS.maxLat && 
-         lng >= BINTAN_BOUNDS.minLng && 
-         lng <= BINTAN_BOUNDS.maxLng;
-}
 
 interface TrackingMapProps {
   vehicles: Vehicle[];
@@ -161,7 +177,7 @@ export default function TrackingMap({
       return { isOutside: false, label: 'No Location' };
     }
     
-    const inside = isInsideBintan(vehicle.latitude, vehicle.longitude);
+    const inside = isInsideOperationalArea(vehicle.latitude, vehicle.longitude);
     return {
       isOutside: !inside,
       label: inside ? 'In Bintan' : 'OUT OF BINTAN!',
@@ -242,7 +258,7 @@ export default function TrackingMap({
               <Marker
                 key={vehicle.id}
                 position={[vehicle.latitude!, vehicle.longitude!]}
-                icon={createIcon(markerColor, zoneStatus.isOutside, isEmergency)}
+                icon={createIcon(markerColor, vehicle.plateNumber, zoneStatus.isOutside, isEmergency)}
                 eventHandlers={{
                   click: () => onVehicleClick?.(vehicle),
                 }}

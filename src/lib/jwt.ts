@@ -144,3 +144,21 @@ export function unauthorizedResponse(message = 'Unauthorized access'): NextRespo
     { status: 403 }
   );
 }
+
+export function requireAdmin(request: NextRequest): AuthResult {
+  const authResult = authenticateRequest(request);
+
+  if (!authResult.success) {
+    return authResult;
+  }
+
+  if (!authResult.user || !authorizeRole(authResult.user, ['admin'])) {
+    return {
+      success: false,
+      error: 'Unauthorized',
+      response: unauthorizedResponse('Admin access required'),
+    };
+  }
+
+  return authResult;
+}

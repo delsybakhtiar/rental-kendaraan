@@ -82,6 +82,39 @@ export async function GET() {
       };
     }
 
+    try {
+      const [failedSyncs, exhaustedSyncs, oldestFailedSync] = await Promise.all([
+        db.trackingLog.count({
+          where: { externalSyncStatus: 'failed' },
+        }),
+        db.trackingLog.count({
+          where: { externalSyncStatus: 'exhausted' },
+        }),
+        db.trackingLog.findFirst({
+          where: { externalSyncStatus: 'failed' },
+          select: { externalSyncAttemptedAt: true, recordedAt: true },
+          orderBy: { externalSyncAttemptedAt: 'asc' },
+        }),
+      ]);
+
+      const oldestPendingAgeMinutes = oldestFailedSync
+        ? Math.floor(
+            (Date.now() - new Date(oldestFailedSync.externalSyncAttemptedAt ?? oldestFailedSync.recordedAt).getTime()) /
+            (1000 * 60),
+          )
+        : 0;
+
+      checks.trackingSync = {
+        status: exhaustedSyncs > 0 ? 'critical' : failedSyncs > 0 ? 'warning' : 'healthy',
+        message: `${failedSyncs} pending, ${exhaustedSyncs} exhausted, oldest pending ${oldestPendingAgeMinutes} minutes`,
+      };
+    } catch {
+      checks.trackingSync = {
+        status: 'degraded',
+        message: 'Could not fetch tracking sync status',
+      };
+    }
+
     // ============================================
     // Unresolved Alerts Check
     // ============================================

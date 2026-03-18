@@ -1,10 +1,20 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { getGpsIntegrationMode } from '@/lib/gps-mode';
+import { syncPersistedGpsStatuses, withDerivedGpsStatusList } from '@/lib/tracking';
 import { serializeData } from '@/lib/utils-serializer';
+import { requireAdmin } from '@/lib/jwt';
 
 // GET /api/dashboard - Get dashboard statistics
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
+    }
+
+    await syncPersistedGpsStatuses();
+
     // Get vehicle counts by status
     const vehiclesByStatus = await db.vehicle.groupBy({
       by: ['status'],
@@ -101,6 +111,12 @@ export async function GET() {
         latitude: true,
         longitude: true,
         lastLocationAt: true,
+        lastTrackedAt: true,
+        gpsStatus: true,
+        currentSpeed: true,
+        currentHeading: true,
+        ignitionStatus: true,
+        deviceId: true,
         dailyRate: true,
       },
     });
@@ -122,13 +138,14 @@ export async function GET() {
       recentTracking,
       activeGeofences,
       recentAlerts: serializeData(recentAlerts),
-      vehiclesWithLocation: serializeData(vehiclesWithLocation),
+      vehiclesWithLocation: serializeData(withDerivedGpsStatusList(vehiclesWithLocation)),
       geofences: geofencesParsed,
       revenueStats: {
         totalPotentialRevenue,
         totalDeposit,
         avgDailyRate,
       },
+      gpsIntegrationMode: getGpsIntegrationMode(),
     });
   } catch (error) {
     console.error('Error fetching dashboard data:', error);

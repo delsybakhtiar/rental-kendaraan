@@ -1,12 +1,18 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireAdmin } from '@/lib/jwt';
 
 // GET /api/geofences/[id] - Get single geofence
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
+    }
+
     const { id } = await params;
 
     const geofence = await db.geofence.findUnique({
@@ -38,10 +44,15 @@ export async function GET(
 
 // PUT /api/geofences/[id] - Update geofence
 export async function PUT(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
+    }
+
     const { id } = await params;
     const body = await request.json();
 
@@ -70,10 +81,15 @@ export async function PUT(
 
 // DELETE /api/geofences/[id] - Delete geofence
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
+    }
+
     const { id } = await params;
 
     await db.geofence.delete({

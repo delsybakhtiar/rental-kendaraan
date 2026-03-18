@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireAdmin } from '@/lib/jwt';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -11,6 +12,11 @@ export async function POST(
   { params }: RouteParams
 ) {
   try {
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
+    }
+
     const { id } = await params;
     const body = await request.json();
     const { price, startDate, endDate, duration } = body;

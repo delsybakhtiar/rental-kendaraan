@@ -43,11 +43,25 @@ import {
   Calendar,
   History,
   FileSpreadsheet,
-  Download
+  Download,
+  Radio,
+  LocateFixed,
+  Shield
 } from 'lucide-react';
-import type { Vehicle, Geofence, TrackingLog } from '@/types';
+import type { Vehicle, Geofence, TrackingLog, TrackingStatus } from '@/types';
 import { useToast } from '@/hooks/use-toast';
-import { useDashboard, useVehicles, useGeofences, useTrackingLogs, useAlerts } from '@/hooks/use-dashboard';
+import { useDashboard, useVehicles, useGeofences, useTrackingLogs, useAlerts, useTrackingStatus } from '@/hooks/use-dashboard';
+import { createWhatsAppUrl, STANDARD_TO_PREMIUM_MESSAGE } from '@/lib/contact';
+import { TrackingTimeline } from '@/components/tracking/tracking-history';
+import { VuraSignature } from '@/components/vura-signature';
+import {
+  formatRentalDate,
+  getLatestRental,
+  getRentalOperationalBadgeClass,
+  getRentalOperationalLabel,
+  getRentalOperationalStatus,
+} from '@/lib/rental-summary';
+import { isInsideOperationalArea } from '@/lib/operational-area';
 
 type AccountType = 'standard' | 'premium';
 
@@ -60,6 +74,44 @@ interface ActivityLog {
   amount?: number;
   timestamp: Date;
   icon: 'check' | 'credit' | 'wrench' | 'calendar' | 'car';
+}
+
+interface VehicleImageProps {
+  src: string | null | undefined;
+  alt: string;
+  className: string;
+  fallbackClassName: string;
+  fallbackIconClassName: string;
+  testId?: string;
+}
+
+function VehicleImage({
+  src,
+  alt,
+  className,
+  fallbackClassName,
+  fallbackIconClassName,
+  testId,
+}: VehicleImageProps) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+
+  if (!src || failedSrc === src) {
+    return (
+      <div className={fallbackClassName} data-testid={testId ? `${testId}-fallback` : undefined}>
+        <ImageIcon className={fallbackIconClassName} />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      data-testid={testId}
+      onError={() => setFailedSrc(src)}
+    />
+  );
 }
 
 // Helper functions
@@ -81,19 +133,60 @@ function formatRupiah(amount: number): string {
   }).format(amount);
 }
 
-// Bintan Island boundary
-const BINTAN_BOUNDS = {
-  minLat: 0.75,
-  maxLat: 1.35,
-  minLng: 104.1,
-  maxLng: 104.95,
-};
+function getGpsStatusBadgeClass(gpsStatus: string | null | undefined): string {
+  if (gpsStatus === 'online') {
+    return 'bg-green-500/20 text-green-400 border border-green-500/30';
+  }
 
-function isInsideBintan(lat: number, lng: number): boolean {
-  return lat >= BINTAN_BOUNDS.minLat && 
-         lat <= BINTAN_BOUNDS.maxLat && 
-         lng >= BINTAN_BOUNDS.minLng && 
-         lng <= BINTAN_BOUNDS.maxLng;
+  if (gpsStatus === 'stale') {
+    return 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
+  }
+
+  return 'bg-zinc-500/20 text-zinc-300 border border-zinc-500/30';
+}
+
+function getGpsStatusLabel(gpsStatus: string | null | undefined): string {
+  if (gpsStatus === 'online') {
+    return 'GPS Online';
+  }
+
+  if (gpsStatus === 'stale') {
+    return 'GPS Stale';
+  }
+
+  return 'GPS Offline';
+}
+
+function getGpsStatusHelperText(gpsStatus: string | null | undefined): string | undefined {
+  if (gpsStatus === 'stale') {
+    return 'GPS stale berarti lokasi terakhir kendaraan sudah lama tidak diperbarui.';
+  }
+
+  return undefined;
+}
+
+function getGpsModeBadgeClass(mode: 'demo' | 'production' | undefined): string {
+  return mode === 'demo'
+    ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
+    : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
+}
+
+function getGpsModeLabel(mode: 'demo' | 'production' | undefined): string {
+  return mode === 'demo' ? 'GPS Demo Mode' : 'GPS Production Mode';
+}
+
+function getVehicleRentalSummary(vehicle: Vehicle) {
+  const rental = getLatestRental(vehicle.rentals);
+  const status = getRentalOperationalStatus(rental);
+
+  return {
+    rental,
+    status,
+    label: getRentalOperationalLabel(status),
+    badgeClass: getRentalOperationalBadgeClass(status),
+    startDateLabel: formatRentalDate(rental?.startDate),
+    endDateLabel: formatRentalDate(rental?.endDate),
+  };
 }
 
 // Dynamically import the map component
@@ -110,6 +203,19 @@ const TrackingMap = dynamic(() => import('@/components/map/tracking-map'), {
 });
 
 const BINTAN_CENTER: [number, number] = [1.05, 104.45];
+
+function getExternalTrackingStatusClass(status: TrackingStatus['externalService']['status'] | undefined) {
+  switch (status) {
+    case 'healthy':
+      return 'bg-green-500/20 text-green-400 border border-green-500/30';
+    case 'degraded':
+      return 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
+    case 'offline':
+      return 'bg-red-500/20 text-red-400 border border-red-500/30';
+    default:
+      return 'bg-white/10 text-white/60 border border-white/10';
+  }
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -141,6 +247,8 @@ export default function DashboardPage() {
   const [isCompleteRentalOpen, setIsCompleteRentalOpen] = useState(false);
   const [vehicleToComplete, setVehicleToComplete] = useState<Vehicle | null>(null);
   const [isCompletingRental, setIsCompletingRental] = useState(false);
+  const [deviceIdForm, setDeviceIdForm] = useState('');
+  const [isSavingDeviceId, setIsSavingDeviceId] = useState(false);
 
   // Export Excel State
   const [isExporting, setIsExporting] = useState(false);
@@ -215,6 +323,71 @@ export default function DashboardPage() {
     setActivityLogs(prev => [newLog, ...prev]);
   };
 
+  const renderActivityLogItem = useCallback((log: ActivityLog) => {
+    const getIcon = () => {
+      switch (log.icon) {
+        case 'check':
+          return <CheckCircle className="h-4 w-4 text-green-400" />;
+        case 'credit':
+          return <CreditCard className="h-4 w-4 text-blue-400" />;
+        case 'wrench':
+          return <Wrench className="h-4 w-4 text-amber-400" />;
+        case 'calendar':
+          return <Calendar className="h-4 w-4 text-purple-400" />;
+        case 'car':
+          return <Car className="h-4 w-4 text-cyan-400" />;
+        default:
+          return <Activity className="h-4 w-4 text-white/50" />;
+      }
+    };
+
+    const getBgColor = () => {
+      switch (log.type) {
+        case 'rental_complete':
+          return 'bg-green-500/15 border-green-400/30';
+        case 'payment':
+          return 'bg-blue-500/15 border-blue-400/30';
+        case 'status_update':
+          return 'bg-amber-500/15 border-amber-400/30';
+        case 'booking':
+          return 'bg-purple-500/15 border-purple-400/30';
+        case 'vehicle_add':
+          return 'bg-cyan-500/15 border-cyan-400/30';
+        default:
+          return 'bg-white/10 border-white/15';
+      }
+    };
+
+    return (
+      <div
+        key={log.id}
+        className={`p-3 rounded-lg border ${getBgColor()} transition-all hover:scale-[1.01]`}
+      >
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 p-1.5 rounded-md bg-white/5">
+            {getIcon()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-white/90 leading-snug">
+              {log.message}
+            </p>
+            <div className="flex items-center gap-2 mt-1.5">
+              <Clock className="h-3 w-3 text-white/30" />
+              <span className="text-xs text-white/40">
+                {formatRelativeTime(log.timestamp)}
+              </span>
+              {log.amount && (
+                <span className="text-xs font-medium text-green-400 ml-auto">
+                  {formatRupiah(log.amount)}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }, []);
+
   // Check authentication
   useEffect(() => {
     const checkAuth = () => {
@@ -245,13 +418,16 @@ export default function DashboardPage() {
   }, [router]);
 
   const isPremium = accountType === 'premium';
+  const upgradeToPremiumUrl = createWhatsAppUrl(STANDARD_TO_PREMIUM_MESSAGE);
 
   // Fetch data
   const { data: dashboardData, isLoading: dashboardLoading, refetch: refetchDashboard } = useDashboard();
-  const { data: vehicles = [] } = useVehicles();
+  const { data: vehicles = [], refetch: refetchVehicles } = useVehicles();
   const { data: geofences = [] } = useGeofences(true);
   const { data: alerts = [], refetch: refetchAlerts } = useAlerts(false);
   const { data: trackingData } = useTrackingLogs(selectedVehicle?.id, 24);
+  const { data: trackingStatus } = useTrackingStatus();
+  const gpsIntegrationMode = dashboardData?.gpsIntegrationMode ?? 'production';
 
   const vehiclesWithLocation = useMemo(() => 
     dashboardData?.vehiclesWithLocation || vehicles.filter(v => v.latitude && v.longitude),
@@ -269,7 +445,7 @@ export default function DashboardPage() {
 
   const isVehicleOutsideBintan = useMemo(() => {
     if (!selectedVehicle?.latitude || !selectedVehicle?.longitude) return false;
-    return !isInsideBintan(selectedVehicle.latitude, selectedVehicle.longitude);
+    return !isInsideOperationalArea(selectedVehicle.latitude, selectedVehicle.longitude);
   }, [selectedVehicle]);
 
   const displayedGeofences = useMemo(() => {
@@ -293,6 +469,7 @@ export default function DashboardPage() {
 
   const handleVehicleSelect = (vehicle: Vehicle) => {
     setSelectedVehicle(vehicle);
+    setDeviceIdForm(vehicle.deviceId || '');
   };
 
   // Engine Kill/Restore handlers
@@ -323,6 +500,7 @@ export default function DashboardPage() {
           variant: 'destructive',
         });
         refetchDashboard();
+        refetchVehicles();
         refetchAlerts();
       } else {
         throw new Error(data.message || 'Gagal mengaktifkan engine kill');
@@ -336,7 +514,7 @@ export default function DashboardPage() {
     } finally {
       setEngineActionLoading(false);
     }
-  }, [selectedVehicle, toast, refetchDashboard, refetchAlerts, isPremium]);
+  }, [selectedVehicle, toast, refetchDashboard, refetchVehicles, refetchAlerts, isPremium]);
 
   const handleEngineRestore = useCallback(async () => {
     if (!selectedVehicle || !isPremium) return;
@@ -364,6 +542,7 @@ export default function DashboardPage() {
           description: `Mesin kendaraan ${selectedVehicle.plateNumber} telah diaktifkan kembali.`,
         });
         refetchDashboard();
+        refetchVehicles();
       } else {
         throw new Error(data.message || 'Gagal mengaktifkan mesin');
       }
@@ -376,9 +555,98 @@ export default function DashboardPage() {
     } finally {
       setEngineActionLoading(false);
     }
-  }, [selectedVehicle, toast, refetchDashboard, isPremium]);
+  }, [selectedVehicle, toast, refetchDashboard, refetchVehicles, isPremium]);
+
+  const handleSaveDeviceProvisioning = useCallback(async () => {
+    if (!selectedVehicle || !isPremium) return;
+
+    setIsSavingDeviceId(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/vehicles/${selectedVehicle.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token || ''}`,
+        },
+        body: JSON.stringify({
+          deviceId: deviceIdForm.trim() || null,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || data.error || 'Gagal menyimpan device GPS');
+      }
+
+      const updatedVehicle = data as Vehicle;
+      setSelectedVehicle(updatedVehicle);
+      setDeviceIdForm(updatedVehicle.deviceId || '');
+      refetchVehicles();
+      refetchDashboard();
+
+      toast({
+        title: 'Provisioning Berhasil',
+        description: updatedVehicle.deviceId
+          ? `Device ${updatedVehicle.deviceId} terhubung ke ${updatedVehicle.plateNumber}.`
+          : `Device GPS dilepas dari ${updatedVehicle.plateNumber}.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Gagal menyimpan device GPS',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingDeviceId(false);
+    }
+  }, [deviceIdForm, isPremium, refetchDashboard, refetchVehicles, selectedVehicle, toast]);
 
   const trackingLogs: TrackingLog[] = trackingData?.logs || [];
+  const fleetSecurityStats = trackingStatus ?? {
+    vehicles: {
+      total: vehicles.length,
+      withLocation: vehicles.filter((vehicle) => vehicle.latitude && vehicle.longitude).length,
+      outsideOperationalArea: vehicles.filter((vehicle) =>
+        vehicle.latitude && vehicle.longitude && !isInsideOperationalArea(vehicle.latitude, vehicle.longitude)
+      ).length,
+      engineKilled: vehicles.filter((vehicle) => vehicle.engineEnabled === false).length,
+    },
+    gps: {
+      online: vehicles.filter((vehicle) => vehicle.gpsStatus === 'online').length,
+      stale: vehicles.filter((vehicle) => vehicle.gpsStatus === 'stale').length,
+      offline: vehicles.filter((vehicle) => vehicle.gpsStatus !== 'online' && vehicle.gpsStatus !== 'stale').length,
+    },
+    tracking: {
+      recentPointsLastHour: 0,
+    },
+    sync: {
+      pending: 0,
+      exhausted: 0,
+      oldestPendingMinutes: 0,
+    },
+    externalService: {
+      configuredUrl: 'not-configured',
+      status: 'unknown' as const,
+      reachable: false,
+      httpStatus: null,
+      details: null,
+    },
+  };
+  const securityVehicles = useMemo(() => (
+    vehiclesWithLocation
+      .filter((vehicle) =>
+        vehicle.latitude !== null &&
+        vehicle.longitude !== null &&
+        (!isInsideOperationalArea(vehicle.latitude, vehicle.longitude) || vehicle.gpsStatus === 'stale'),
+      )
+      .sort((a, b) => {
+        const aOutside = a.latitude !== null && a.longitude !== null && !isInsideOperationalArea(a.latitude, a.longitude);
+        const bOutside = b.latitude !== null && b.longitude !== null && !isInsideOperationalArea(b.latitude, b.longitude);
+        return Number(bOutside) - Number(aOutside);
+      })
+  ), [vehiclesWithLocation]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -386,8 +654,17 @@ export default function DashboardPage() {
     router.push('/admin/login');
   };
 
+  const resetImageSelection = useCallback(() => {
+    setImagePreview(null);
+    setVehicleForm((prev) => ({ ...prev, imageUrl: '' }));
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, []);
+
   // Image Upload Handler
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -398,6 +675,7 @@ export default function DashboardPage() {
         description: 'Tipe file tidak valid. Gunakan JPEG, PNG, WebP, atau GIF.',
         variant: 'destructive',
       });
+      input.value = '';
       return;
     }
 
@@ -407,8 +685,11 @@ export default function DashboardPage() {
         description: 'Ukuran file terlalu besar. Maksimum 5MB.',
         variant: 'destructive',
       });
+      input.value = '';
       return;
     }
+
+    setVehicleForm((prev) => ({ ...prev, imageUrl: '' }));
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -423,6 +704,9 @@ export default function DashboardPage() {
 
       const response = await fetch('/api/upload', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+        },
         body: formData,
       });
 
@@ -435,7 +719,10 @@ export default function DashboardPage() {
           description: 'Gambar kendaraan berhasil diupload.',
         });
       } else {
-        throw new Error(data.error || 'Gagal mengupload gambar');
+        const errorMessage = data.details
+          ? `${data.error || 'Gagal mengupload gambar'} (${data.details})`
+          : (data.error || 'Gagal mengupload gambar');
+        throw new Error(errorMessage);
       }
     } catch (error) {
       toast({
@@ -443,14 +730,24 @@ export default function DashboardPage() {
         description: error instanceof Error ? error.message : 'Gagal mengupload gambar',
         variant: 'destructive',
       });
-      setImagePreview(null);
+      resetImageSelection();
     } finally {
       setIsUploading(false);
+      input.value = '';
     }
   };
 
   // Add Vehicle Handler
   const handleAddVehicle = async () => {
+    if (isUploading) {
+      toast({
+        title: 'Upload Belum Selesai',
+        description: 'Tunggu hingga upload gambar selesai sebelum menambahkan kendaraan.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (!vehicleForm.plateNumber || !vehicleForm.brand || !vehicleForm.model || !vehicleForm.dailyRate) {
       toast({
         title: 'Error',
@@ -498,8 +795,9 @@ export default function DashboardPage() {
           status: 'available',
           imageUrl: '',
         });
-        setImagePreview(null);
+        resetImageSelection();
         refetchDashboard();
+        refetchVehicles();
         
         // Add activity log for new vehicle
         addActivityLog({
@@ -540,6 +838,7 @@ export default function DashboardPage() {
         });
         setSelectedVehicle(null);
         refetchDashboard();
+        refetchVehicles();
       } else {
         const data = await response.json();
         throw new Error(data.error || 'Gagal menghapus kendaraan');
@@ -564,7 +863,11 @@ export default function DashboardPage() {
 
     setIsCompletingRental(true);
     try {
-      const rentalResponse = await fetch(`/api/rentals/vehicle/${vehicleToComplete.id}/active`);
+      const rentalResponse = await fetch(`/api/rentals/vehicle/${vehicleToComplete.id}/active`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+      });
       let rentalId = null;
 
       if (rentalResponse.ok) {
@@ -574,7 +877,10 @@ export default function DashboardPage() {
 
       const response = await fetch(`/api/vehicles/${vehicleToComplete.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+        },
         body: JSON.stringify({ status: 'available' }),
       });
 
@@ -585,7 +891,10 @@ export default function DashboardPage() {
       if (rentalId) {
         await fetch(`/api/rentals/${rentalId}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+          },
           body: JSON.stringify({ status: 'completed' }),
         });
       }
@@ -606,6 +915,7 @@ export default function DashboardPage() {
       setVehicleToComplete(null);
       setSelectedVehicle(null);
       refetchDashboard();
+      refetchVehicles();
     } catch (error) {
       toast({
         title: 'Error',
@@ -621,10 +931,20 @@ export default function DashboardPage() {
   const handleExportExcel = async () => {
     setIsExporting(true);
     try {
-      const response = await fetch('/api/export/excel');
+      const response = await fetch('/api/export/excel', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+      });
       
       if (!response.ok) {
-        throw new Error('Gagal mengekspor data');
+        let message = 'Gagal mengekspor data';
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const errorData = await response.json();
+          message = errorData.error || errorData.message || errorData.details || message;
+        }
+        throw new Error(message);
       }
 
       // Get the blob
@@ -708,6 +1028,14 @@ export default function DashboardPage() {
                   Standard
                 </Badge>
               )}
+
+              <Badge
+                variant="secondary"
+                className={getGpsModeBadgeClass(gpsIntegrationMode)}
+                data-testid="gps-mode-indicator"
+              >
+                {getGpsModeLabel(gpsIntegrationMode)}
+              </Badge>
             </div>
 
             <div className="flex items-center gap-3">
@@ -764,9 +1092,19 @@ export default function DashboardPage() {
                     <p className="text-sm text-amber-200/60">Upgrade ke Premium untuk fitur GPS Tracking & Engine Kill</p>
                   </div>
                 </div>
-                <Button className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white">
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Upgrade Premium
+                <Button
+                  asChild
+                  className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white"
+                >
+                  <a
+                    href={upgradeToPremiumUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-testid="upgrade-premium-banner-cta"
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Upgrade Premium
+                  </a>
                 </Button>
               </CardContent>
             </Card>
@@ -881,23 +1219,25 @@ export default function DashboardPage() {
                           <Label className="text-white/70">Foto Kendaraan</Label>
                           <div 
                             onClick={() => fileInputRef.current?.click()}
+                            data-testid="vehicle-image-upload-trigger"
                             className="border-2 border-dashed border-white/20 rounded-lg p-4 text-center cursor-pointer hover:border-amber-500/50 transition-colors"
                           >
                             {imagePreview ? (
-                              <div className="relative">
+                              <div className="relative" data-testid="vehicle-image-preview-container">
                                 <img 
                                   src={imagePreview} 
                                   alt="Preview" 
-                                  className="max-h-40 mx-auto rounded-lg"
+                                  className="max-h-40 mx-auto rounded-lg object-contain"
+                                  data-testid="vehicle-image-preview"
                                 />
                                 <Button
                                   size="sm"
                                   variant="destructive"
                                   className="absolute top-2 right-2 h-6 w-6 p-0"
+                                  data-testid="vehicle-image-remove"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setImagePreview(null);
-                                    setVehicleForm(prev => ({ ...prev, imageUrl: '' }));
+                                    resetImageSelection();
                                   }}
                                 >
                                   <X className="h-4 w-4" />
@@ -923,6 +1263,7 @@ export default function DashboardPage() {
                             accept="image/*"
                             onChange={handleImageUpload}
                             className="hidden"
+                            data-testid="vehicle-image-input"
                           />
                         </div>
 
@@ -934,6 +1275,7 @@ export default function DashboardPage() {
                             onChange={(e) => setVehicleForm(prev => ({ ...prev, plateNumber: e.target.value }))}
                             placeholder="B 1234 ABC"
                             className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                            data-testid="vehicle-plate-number"
                           />
                         </div>
 
@@ -946,6 +1288,7 @@ export default function DashboardPage() {
                               onChange={(e) => setVehicleForm(prev => ({ ...prev, brand: e.target.value }))}
                               placeholder="Toyota"
                               className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                              data-testid="vehicle-brand"
                             />
                           </div>
                           <div className="space-y-2">
@@ -955,6 +1298,7 @@ export default function DashboardPage() {
                               onChange={(e) => setVehicleForm(prev => ({ ...prev, model: e.target.value }))}
                               placeholder="Avanza"
                               className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                              data-testid="vehicle-model"
                             />
                           </div>
                         </div>
@@ -991,6 +1335,7 @@ export default function DashboardPage() {
                               onChange={(e) => setVehicleForm(prev => ({ ...prev, dailyRate: e.target.value }))}
                               placeholder="350000"
                               className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                              data-testid="vehicle-daily-rate"
                             />
                           </div>
                           <div className="space-y-2">
@@ -1016,16 +1361,27 @@ export default function DashboardPage() {
                         <Button
                           variant="outline"
                           onClick={() => setIsAddVehicleOpen(false)}
-                          className="border-white/10 text-white/60 hover:text-white hover:bg-white/5"
+                          className="border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
                         >
                           Batal
                         </Button>
                         <Button
                           onClick={handleAddVehicle}
+                          disabled={isUploading}
+                          data-testid="vehicle-submit"
                           className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white"
                         >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Tambah Kendaraan
+                          {isUploading ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="h-4 w-4 mr-2" />
+                              Tambah Kendaraan
+                            </>
+                          )}
                         </Button>
                       </DialogFooter>
                     </DialogContent>
@@ -1035,62 +1391,85 @@ export default function DashboardPage() {
               <CardContent>
                 <div className="space-y-2 max-h-[500px] overflow-y-auto">
                   {vehicles.map((vehicle) => (
-                    <div
-                      key={vehicle.id}
-                      onClick={() => handleVehicleSelect(vehicle)}
-                      className={`p-3 rounded-lg cursor-pointer transition-all ${
-                        selectedVehicle?.id === vehicle.id
-                          ? 'bg-blue-500/20 border border-blue-500/30'
-                          : 'bg-white/5 hover:bg-white/10 border border-transparent'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          {vehicle.imageUrl ? (
-                            <img 
-                              src={vehicle.imageUrl} 
-                              alt={vehicle.plateNumber}
-                              className="w-10 h-10 rounded-lg object-cover"
-                            />
-                          ) : (
-                            <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center">
-                              <Car className="h-5 w-5 text-white/30" />
+                    (() => {
+                      const rentalSummary = getVehicleRentalSummary(vehicle);
+
+                      return (
+                        <div
+                          key={vehicle.id}
+                          onClick={() => handleVehicleSelect(vehicle)}
+                          data-testid={`vehicle-list-item-${vehicle.id}`}
+                          className={`p-3 rounded-lg cursor-pointer transition-all ${
+                            selectedVehicle?.id === vehicle.id
+                              ? 'bg-blue-500/20 border border-blue-500/30'
+                              : 'bg-white/5 hover:bg-white/10 border border-transparent'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3">
+                              <VehicleImage
+                                src={vehicle.imageUrl}
+                                alt={vehicle.plateNumber}
+                                className="w-10 h-10 rounded-lg object-contain bg-white/5"
+                                fallbackClassName="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center"
+                                fallbackIconClassName="h-5 w-5 text-white/30"
+                                testId={`vehicle-list-image-${vehicle.id}`}
+                              />
+                              <div>
+                                <p className="font-medium text-white text-sm">{vehicle.plateNumber}</p>
+                                <p className="text-xs text-white/40">{vehicle.brand} {vehicle.model}</p>
+                                {rentalSummary.rental && (
+                                  <div className="mt-1 space-y-1" data-testid={`vehicle-rental-summary-${vehicle.id}`}>
+                                    <p className="text-[11px] text-white/45">
+                                      {rentalSummary.startDateLabel} - {rentalSummary.endDateLabel}
+                                    </p>
+                                    <Badge variant="secondary" className={rentalSummary.badgeClass}>
+                                      Sewa {rentalSummary.label}
+                                    </Badge>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          )}
-                          <div>
-                            <p className="font-medium text-white text-sm">{vehicle.plateNumber}</p>
-                            <p className="text-xs text-white/40">{vehicle.brand} {vehicle.model}</p>
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              {vehicle.status === 'rented' && (
+                                <Button
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenCompleteRental(vehicle);
+                                  }}
+                                  className="bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30"
+                                >
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  Selesaikan
+                                </Button>
+                              )}
+                              <Badge 
+                                variant="secondary" 
+                                className={
+                                  vehicle.status === 'available' 
+                                    ? 'bg-green-500/20 text-green-400'
+                                    : vehicle.status === 'rented'
+                                    ? 'bg-blue-500/20 text-blue-400'
+                                    : 'bg-amber-500/20 text-amber-400'
+                                }
+                              >
+                                {vehicle.status === 'available' ? 'Tersedia' : vehicle.status === 'rented' ? 'Disewa' : 'Service'}
+                              </Badge>
+                              {isPremium && (
+                                <Badge
+                                  variant="secondary"
+                                  className={getGpsStatusBadgeClass(vehicle.gpsStatus)}
+                                  title={getGpsStatusHelperText(vehicle.gpsStatus)}
+                                >
+                                  {getGpsStatusLabel(vehicle.gpsStatus)}
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {vehicle.status === 'rented' && (
-                            <Button
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenCompleteRental(vehicle);
-                              }}
-                              className="bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30"
-                            >
-                              <CheckCircle className="h-3 w-3 mr-1" />
-                              Selesaikan
-                            </Button>
-                          )}
-                          <Badge 
-                            variant="secondary" 
-                            className={
-                              vehicle.status === 'available' 
-                                ? 'bg-green-500/20 text-green-400'
-                                : vehicle.status === 'rented'
-                                ? 'bg-blue-500/20 text-blue-400'
-                                : 'bg-amber-500/20 text-amber-400'
-                            }
-                          >
-                            {vehicle.status === 'available' ? 'Tersedia' : vehicle.status === 'rented' ? 'Disewa' : 'Service'}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
+                      );
+                    })()
                   ))}
                 </div>
               </CardContent>
@@ -1102,26 +1481,74 @@ export default function DashboardPage() {
             {isPremium ? (
               <Card className="h-[500px] bg-white/[0.02] border-white/10">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2 text-white">
-                    <MapPin className="h-5 w-5 text-blue-400" />
-                    Peta Pulau Bintan
-                    {selectedVehicle && (
-                      <Badge variant="secondary" className="ml-2 bg-white/10 text-white/60">
-                        {selectedVehicle.plateNumber}
-                      </Badge>
-                    )}
-                  </CardTitle>
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle className="text-base flex items-center gap-2 text-white">
+                      <MapPin className="h-5 w-5 text-blue-400" />
+                      Peta Pulau Bintan
+                      {selectedVehicle && (
+                        <Badge variant="secondary" className="ml-2 bg-white/10 text-white/60">
+                          {selectedVehicle.plateNumber}
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <Button
+                      onClick={handleExportExcel}
+                      disabled={isExporting}
+                      data-testid="premium-export-report"
+                      className="bg-green-600 hover:bg-green-700 text-white gap-2"
+                    >
+                      {isExporting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Mengunduh...
+                        </>
+                      ) : (
+                        <>
+                          <FileSpreadsheet className="h-4 w-4" />
+                          Unduh Laporan
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </CardHeader>
-                <CardContent className="p-2 h-[calc(100%-60px)]">
-                  <TrackingMap
-                    vehicles={vehiclesWithLocation}
-                    geofences={displayedGeofences}
-                    selectedVehicle={selectedVehicle}
-                    trackingPath={trackingLogs}
-                    center={BINTAN_CENTER}
-                    zoom={11}
-                    onVehicleClick={handleVehicleSelect}
-                  />
+                <CardContent className="p-2 h-[calc(100%-60px)] flex flex-col gap-2">
+                  <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
+                    <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-green-300/80">GPS Online</p>
+                      <p className="mt-1 text-xl font-semibold text-green-300" data-testid="fleet-gps-online">
+                        {fleetSecurityStats.gps.online}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-amber-300/80">GPS Stale</p>
+                      <p className="mt-1 text-xl font-semibold text-amber-300" data-testid="fleet-gps-stale">
+                        {fleetSecurityStats.gps.stale}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-red-300/80">Keluar Area</p>
+                      <p className="mt-1 text-xl font-semibold text-red-300" data-testid="fleet-outside-area">
+                        {fleetSecurityStats.vehicles.outsideOperationalArea}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-cyan-300/80">Sync Pending</p>
+                      <p className="mt-1 text-xl font-semibold text-cyan-300" data-testid="fleet-sync-pending">
+                        {fleetSecurityStats.sync.pending}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex-1 min-h-0">
+                    <TrackingMap
+                      vehicles={vehiclesWithLocation}
+                      geofences={displayedGeofences}
+                      selectedVehicle={selectedVehicle}
+                      trackingPath={trackingLogs}
+                      center={BINTAN_CENTER}
+                      zoom={11}
+                      onVehicleClick={handleVehicleSelect}
+                    />
+                  </div>
                 </CardContent>
               </Card>
             ) : (
@@ -1158,70 +1585,7 @@ export default function DashboardPage() {
                 <CardContent className="p-0">
                   <div className="h-[420px] overflow-y-auto">
                     <div className="space-y-1 p-4 pt-0">
-                      {activityLogs.map((log) => {
-                        const getIcon = () => {
-                          switch (log.icon) {
-                            case 'check':
-                              return <CheckCircle className="h-4 w-4 text-green-400" />;
-                            case 'credit':
-                              return <CreditCard className="h-4 w-4 text-blue-400" />;
-                            case 'wrench':
-                              return <Wrench className="h-4 w-4 text-amber-400" />;
-                            case 'calendar':
-                              return <Calendar className="h-4 w-4 text-purple-400" />;
-                            case 'car':
-                              return <Car className="h-4 w-4 text-cyan-400" />;
-                            default:
-                              return <Activity className="h-4 w-4 text-white/50" />;
-                          }
-                        };
-
-                        const getBgColor = () => {
-                          switch (log.type) {
-                            case 'rental_complete':
-                              return 'bg-green-500/10 border-green-500/20';
-                            case 'payment':
-                              return 'bg-blue-500/10 border-blue-500/20';
-                            case 'status_update':
-                              return 'bg-amber-500/10 border-amber-500/20';
-                            case 'booking':
-                              return 'bg-purple-500/10 border-purple-500/20';
-                            case 'vehicle_add':
-                              return 'bg-cyan-500/10 border-cyan-500/20';
-                            default:
-                              return 'bg-white/5 border-white/10';
-                          }
-                        };
-
-                        return (
-                          <div
-                            key={log.id}
-                            className={`p-3 rounded-lg border ${getBgColor()} transition-all hover:scale-[1.01]`}
-                          >
-                            <div className="flex items-start gap-3">
-                              <div className="mt-0.5 p-1.5 rounded-md bg-white/5">
-                                {getIcon()}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm text-white/90 leading-snug">
-                                  {log.message}
-                                </p>
-                                <div className="flex items-center gap-2 mt-1.5">
-                                  <Clock className="h-3 w-3 text-white/30" />
-                                  <span className="text-xs text-white/40">
-                                    {formatRelativeTime(log.timestamp)}
-                                  </span>
-                                  {log.amount && (
-                                    <span className="text-xs font-medium text-green-400 ml-auto">
-                                      {formatRupiah(log.amount)}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                      {activityLogs.map((log) => renderActivityLogItem(log))}
                     </div>
                   </div>
                 </CardContent>
@@ -1234,16 +1598,52 @@ export default function DashboardPage() {
             {isPremium ? (
               <Card className="bg-white/[0.02] border-white/10">
                 <CardContent className="p-4">
+                  <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3" data-testid="fleet-security-health">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-white/40">Fleet Security Health</p>
+                        <p className="mt-1 text-sm text-white/80">
+                          {fleetSecurityStats.tracking.recentPointsLastHour} titik tracking dalam 1 jam terakhir
+                        </p>
+                      </div>
+                      <Badge className={getExternalTrackingStatusClass(fleetSecurityStats.externalService.status)}>
+                        {fleetSecurityStats.externalService.status === 'healthy'
+                          ? 'Tracking Service Healthy'
+                          : fleetSecurityStats.externalService.status === 'degraded'
+                          ? 'Tracking Service Degraded'
+                          : fleetSecurityStats.externalService.status === 'offline'
+                          ? 'Tracking Service Offline'
+                          : 'Tracking Service Unknown'}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-white/60">
+                      <div className="rounded-lg bg-white/5 px-3 py-2">
+                        Sync exhausted: <span className="font-medium text-white">{fleetSecurityStats.sync.exhausted}</span>
+                      </div>
+                      <div className="rounded-lg bg-white/5 px-3 py-2">
+                        Engine kill: <span className="font-medium text-white">{fleetSecurityStats.vehicles.engineKilled}</span>
+                      </div>
+                    </div>
+                  </div>
                   <Tabs defaultValue="geofences">
-                    <TabsList className="w-full bg-white/5">
-                      <TabsTrigger value="geofences" className="text-xs data-[state=active]:bg-white/10">Geofences</TabsTrigger>
-                      <TabsTrigger value="alerts" className="text-xs data-[state=active]:bg-white/10 relative">
+                    <TabsList className="grid w-full grid-cols-5 border border-white/10 bg-white/10 p-1">
+                      <TabsTrigger value="geofences" className="text-xs text-white/70 data-[state=active]:bg-white data-[state=active]:text-[#0a0a0f] data-[state=active]:shadow-sm">Zona</TabsTrigger>
+                      <TabsTrigger value="alerts" className="text-xs text-white/70 data-[state=active]:bg-white data-[state=active]:text-[#0a0a0f] data-[state=active]:shadow-sm relative">
                         Alerts
                         {(criticalAlerts.length + highAlerts.length) > 0 && (
                           <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center">
                             {criticalAlerts.length + highAlerts.length}
                           </span>
                         )}
+                      </TabsTrigger>
+                      <TabsTrigger value="tracking" className="text-xs text-white/70 data-[state=active]:bg-white data-[state=active]:text-[#0a0a0f] data-[state=active]:shadow-sm">
+                        Tracking
+                      </TabsTrigger>
+                      <TabsTrigger value="security" className="text-xs text-white/70 data-[state=active]:bg-white data-[state=active]:text-[#0a0a0f] data-[state=active]:shadow-sm">
+                        Security
+                      </TabsTrigger>
+                      <TabsTrigger value="history" className="text-xs text-white/70 data-[state=active]:bg-white data-[state=active]:text-[#0a0a0f] data-[state=active]:shadow-sm">
+                        Riwayat
                       </TabsTrigger>
                     </TabsList>
 
@@ -1281,6 +1681,86 @@ export default function DashboardPage() {
                         )}
                       </div>
                     </TabsContent>
+
+                    <TabsContent value="tracking" className="mt-4">
+                      <div data-testid="premium-tracking-panel">
+                        <TrackingTimeline logs={trackingLogs} />
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="security" className="mt-4">
+                      <div className="space-y-2 max-h-[300px] overflow-y-auto" data-testid="premium-security-workflow">
+                        {securityVehicles.length === 0 ? (
+                          <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-300">
+                            Tidak ada kendaraan prioritas tinggi. Semua unit berada dalam area operasional dan GPS tidak stale.
+                          </div>
+                        ) : (
+                          securityVehicles.map((vehicle) => {
+                            const outsideArea =
+                              vehicle.latitude !== null &&
+                              vehicle.longitude !== null &&
+                              !isInsideOperationalArea(vehicle.latitude, vehicle.longitude);
+
+                            return (
+                              <div
+                                key={vehicle.id}
+                                className={`rounded-lg border p-3 ${
+                                  outsideArea
+                                    ? 'border-red-500/30 bg-red-500/10'
+                                    : 'border-amber-500/30 bg-amber-500/10'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="text-sm font-medium text-white">{vehicle.plateNumber}</p>
+                                    <p className="text-xs text-white/50">{vehicle.brand} {vehicle.model}</p>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {outsideArea && (
+                                      <Badge className="bg-red-500/20 text-red-400 border border-red-500/30">
+                                        Keluar Area
+                                      </Badge>
+                                    )}
+                                    {vehicle.gpsStatus === 'stale' && (
+                                      <Badge className="bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                        GPS Stale
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="mt-2 flex items-center justify-between gap-3">
+                                  <p className="text-xs text-white/60">
+                                    Device: <span className="text-white/80">{vehicle.deviceId || 'belum dipasang'}</span>
+                                  </p>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                                    onClick={() => handleVehicleSelect(vehicle)}
+                                  >
+                                    <LocateFixed className="h-3.5 w-3.5 mr-2" />
+                                    Fokus Kendaraan
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="history" className="mt-4">
+                      <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.06] p-3 max-h-[300px] overflow-y-auto" data-testid="premium-history-panel">
+                        <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-200">
+                          Riwayat membantu admin melihat aktivitas kendaraan terbaru. Warna panel dibuat lebih terang agar status dan waktu lebih mudah dibaca.
+                        </div>
+                        {activityLogs.length === 0 ? (
+                          <p className="text-sm text-white/40 text-center py-4">Belum ada riwayat kendaraan</p>
+                        ) : (
+                          activityLogs.map((log) => renderActivityLogItem(log))
+                        )}
+                      </div>
+                    </TabsContent>
                   </Tabs>
                 </CardContent>
               </Card>
@@ -1305,9 +1785,19 @@ export default function DashboardPage() {
                       </div>
                     ))}
                   </div>
-                  <Button className="w-full mt-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white">
-                    <Crown className="h-4 w-4 mr-2" />
-                    Upgrade Premium
+                  <Button
+                    asChild
+                    className="w-full mt-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white"
+                  >
+                    <a
+                      href={upgradeToPremiumUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      data-testid="upgrade-premium-panel-cta"
+                    >
+                      <Crown className="h-4 w-4 mr-2" />
+                      Upgrade Premium
+                    </a>
                   </Button>
                 </CardContent>
               </Card>
@@ -1318,21 +1808,22 @@ export default function DashboardPage() {
         {/* Selected Vehicle Details */}
         {selectedVehicle && (
           <div className="mt-6">
+            {(() => {
+              const rentalSummary = getVehicleRentalSummary(selectedVehicle);
+
+              return (
             <Card className={`bg-white/[0.02] border-white/10 ${isVehicleOutsideBintan && isPremium ? 'border-red-500/30 ring-1 ring-red-500/20' : ''}`}>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center justify-between">
                   <span className="flex items-center gap-2 text-white">
-                    {selectedVehicle.imageUrl ? (
-                      <img 
-                        src={selectedVehicle.imageUrl} 
-                        alt={selectedVehicle.plateNumber}
-                        className="w-12 h-12 rounded-lg object-cover"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-amber-500/20 to-orange-500/20 flex items-center justify-center">
-                        <Car className="h-6 w-6 text-amber-400" />
-                      </div>
-                    )}
+                    <VehicleImage
+                      src={selectedVehicle.imageUrl}
+                      alt={selectedVehicle.plateNumber}
+                      className="w-12 h-12 rounded-lg object-contain bg-white/5"
+                      fallbackClassName="w-12 h-12 rounded-lg bg-gradient-to-br from-amber-500/20 to-orange-500/20 flex items-center justify-center"
+                      fallbackIconClassName="h-6 w-6 text-amber-400"
+                      testId="selected-vehicle-image"
+                    />
                     <div>
                       <p className="font-semibold">{selectedVehicle.plateNumber}</p>
                       <p className="text-xs text-white/40">{selectedVehicle.brand} {selectedVehicle.model}</p>
@@ -1417,11 +1908,46 @@ export default function DashboardPage() {
                     <p className="font-medium text-blue-400">{formatRupiah(getDailyRateValue(selectedVehicle.dailyRate))}</p>
                   </div>
                   <div>
+                    <p className="text-xs text-white/40">Mulai Sewa</p>
+                    <p className="font-medium text-white" data-testid="selected-vehicle-rental-start">
+                      {rentalSummary.startDateLabel}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-white/40">Akhir Sewa</p>
+                    <p className="font-medium text-white" data-testid="selected-vehicle-rental-end">
+                      {rentalSummary.endDateLabel}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-white/40">Status Sewa</p>
+                    <Badge className={rentalSummary.badgeClass} data-testid="selected-vehicle-rental-status">
+                      {rentalSummary.label}
+                    </Badge>
+                  </div>
+                  <div>
                     <p className="text-xs text-white/40">Status Mesin</p>
                     <Badge className={selectedVehicle.engineEnabled !== false ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}>
                       {selectedVehicle.engineEnabled !== false ? 'Aktif' : 'Dimatikan'}
                     </Badge>
                   </div>
+                  {isPremium && (
+                    <div>
+                      <p className="text-xs text-white/40">Status GPS</p>
+                      <Badge
+                        className={getGpsStatusBadgeClass(selectedVehicle.gpsStatus)}
+                        data-testid="selected-vehicle-gps-status"
+                        title={getGpsStatusHelperText(selectedVehicle.gpsStatus)}
+                      >
+                        {getGpsStatusLabel(selectedVehicle.gpsStatus)}
+                      </Badge>
+                      {selectedVehicle.gpsStatus === 'stale' && (
+                        <p className="mt-1 text-[11px] text-amber-200/80" data-testid="selected-vehicle-gps-helper">
+                          GPS stale: lokasi terakhir kendaraan sudah lama tidak diperbarui.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {selectedVehicle.latitude && selectedVehicle.longitude && (
@@ -1435,8 +1961,49 @@ export default function DashboardPage() {
                     </p>
                   </div>
                 )}
+
+                {isPremium && (
+                  <div className="mt-4 pt-4 border-t border-white/10 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Radio className="h-4 w-4 text-cyan-400" />
+                      <p className="text-sm font-medium text-white">Provisioning Device GPS</p>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Input
+                        value={deviceIdForm}
+                        onChange={(event) => setDeviceIdForm(event.target.value)}
+                        placeholder="Mis. GPS-BTN-001"
+                        className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                        data-testid="device-id-input"
+                      />
+                      <Button
+                        onClick={handleSaveDeviceProvisioning}
+                        disabled={isSavingDeviceId}
+                        className="bg-cyan-600 hover:bg-cyan-700 text-white"
+                        data-testid="device-id-save"
+                      >
+                        {isSavingDeviceId ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Menyimpan...
+                          </>
+                        ) : (
+                          <>
+                            <Shield className="h-4 w-4 mr-2" />
+                            Simpan Device
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-white/40">
+                      Device ID dipakai untuk menghubungkan GPS fisik ke kendaraan ini. Kosongkan nilai untuk melepas perangkat.
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
+              );
+            })()}
           </div>
         )}
       </main>
@@ -1444,8 +2011,11 @@ export default function DashboardPage() {
       {/* Footer */}
       <footer className="relative z-10 border-t border-white/5 mt-8">
         <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between text-xs text-white/30">
-            <p>2024 Bintan Island Rental {isPremium ? 'Premium' : 'Standard'} Dashboard</p>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between text-xs text-white/30">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+              <p>2024 Bintan Island Rental {isPremium ? 'Premium' : 'Standard'} Dashboard</p>
+              <VuraSignature className="self-start bg-white/[0.03]" label="Developed by" />
+            </div>
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
               Last update: {new Date().toLocaleString('id-ID')}
@@ -1473,10 +2043,13 @@ export default function DashboardPage() {
               <div className="bg-white/5 rounded-xl p-4 border border-white/10">
                 <div className="flex items-center gap-3">
                   {vehicleToComplete.imageUrl ? (
-                    <img 
-                      src={vehicleToComplete.imageUrl} 
+                    <VehicleImage
+                      src={vehicleToComplete.imageUrl}
                       alt={vehicleToComplete.plateNumber}
-                      className="w-12 h-12 rounded-lg object-cover"
+                      className="w-12 h-12 rounded-lg object-contain bg-white/5"
+                      fallbackClassName="w-12 h-12 rounded-lg bg-white/5 flex items-center justify-center"
+                      fallbackIconClassName="h-6 w-6 text-white/30"
+                      testId="complete-rental-image"
                     />
                   ) : (
                     <div className="w-12 h-12 rounded-lg bg-white/5 flex items-center justify-center">
@@ -1508,7 +2081,7 @@ export default function DashboardPage() {
                 <Button
                   variant="outline"
                   onClick={() => setIsCompleteRentalOpen(false)}
-                  className="flex-1 border-white/10 text-white/60 hover:bg-white/5"
+                  className="flex-1 border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
                   disabled={isCompletingRental}
                 >
                   <X className="h-4 w-4 mr-2" />

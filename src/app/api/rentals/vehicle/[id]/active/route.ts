@@ -1,13 +1,19 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { serializeData } from '@/lib/utils-serializer';
+import { requireAdmin } from '@/lib/jwt';
 
 // GET /api/rentals/vehicle/[id]/active - Get active rental for a vehicle
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = requireAdmin(request);
+    if (!authResult.success) {
+      return authResult.response!;
+    }
+
     const { id } = await params;
 
     const rental = await db.rental.findFirst({

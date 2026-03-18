@@ -53,9 +53,9 @@ import {
   Shield
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { createWhatsAppUrl } from '@/lib/contact';
 
 // Constants
-const WHATSAPP_NUMBER = '6285374383791';
 const DRIVER_FEE_PER_DAY = 150000;
 const PAYMENT_TIMEOUT_MINUTES = 30;
 
@@ -70,6 +70,45 @@ interface Vehicle {
   status: string;
   dailyRate: number | { toNumber?: () => number };
   imageUrl?: string;
+}
+
+function getVehicleStatusMeta(status: string): {
+  label: string;
+  badgeClassName: string;
+  canBook: boolean;
+} {
+  switch (status) {
+    case 'available':
+      return {
+        label: 'Tersedia',
+        badgeClassName: 'bg-green-500/20 text-green-400 border-green-500/30',
+        canBook: true,
+      };
+    case 'rented':
+      return {
+        label: 'Disewa',
+        badgeClassName: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+        canBook: false,
+      };
+    case 'maintenance':
+      return {
+        label: 'Maintenance',
+        badgeClassName: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+        canBook: false,
+      };
+    case 'emergency':
+      return {
+        label: 'Darurat',
+        badgeClassName: 'bg-red-500/20 text-red-400 border-red-500/30',
+        canBook: false,
+      };
+    default:
+      return {
+        label: status,
+        badgeClassName: 'bg-white/10 text-white/70 border-white/20',
+        canBook: false,
+      };
+  }
 }
 
 interface PendingBooking {
@@ -91,6 +130,7 @@ interface PendingBooking {
   rentalOption: string;
   pickupLocation?: string;
   expiresAt: string;
+  bookingToken: string;
   status: string;
   createdAt: string;
 }
@@ -141,10 +181,10 @@ export default function KatalogPage() {
         const data = await response.json();
         console.log('Vehicles API response:', data);
         if (data.success && data.data) {
-          setVehicles(data.data.filter((v: Vehicle) => v.status === 'available'));
+          setVehicles(data.data);
         } else if (Array.isArray(data)) {
           // Fallback if API returns array directly
-          setVehicles(data.filter((v: Vehicle) => v.status === 'available'));
+          setVehicles(data);
         }
       } catch (error) {
         console.error('Error fetching vehicles:', error);
@@ -245,7 +285,7 @@ export default function KatalogPage() {
       const response = await fetch(`/api/bookings/${pendingBooking.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'paid' }),
+        body: JSON.stringify({ status: 'paid', bookingToken: pendingBooking.bookingToken }),
       });
 
       const data = await response.json();
@@ -259,7 +299,7 @@ export default function KatalogPage() {
         const vehiclesResponse = await fetch('/api/vehicles');
         const vehiclesData = await vehiclesResponse.json();
         if (vehiclesData.success) {
-          setVehicles(vehiclesData.data.filter((v: Vehicle) => v.status === 'available'));
+          setVehicles(vehiclesData.data);
         }
       } else {
         toast({ title: 'Error', description: data.message, variant: 'destructive' });
@@ -279,7 +319,7 @@ export default function KatalogPage() {
       await fetch(`/api/bookings/${pendingBooking.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'cancelled' }),
+        body: JSON.stringify({ status: 'cancelled', bookingToken: pendingBooking.bookingToken }),
       });
 
       // Open WhatsApp with cancel message
@@ -293,7 +333,7 @@ export default function KatalogPage() {
 
 Mohon konfirmasi pembatalan. Terima kasih.`;
 
-      window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, '_blank');
+      window.open(createWhatsAppUrl(message), '_blank');
       
       localStorage.removeItem('pendingBooking');
       setPaymentModalOpen(false);
@@ -303,7 +343,7 @@ Mohon konfirmasi pembatalan. Terima kasih.`;
       const vehiclesResponse = await fetch('/api/vehicles');
       const vehiclesData = await vehiclesResponse.json();
       if (vehiclesData.success) {
-        setVehicles(vehiclesData.data.filter((v: Vehicle) => v.status === 'available'));
+        setVehicles(vehiclesData.data);
       }
     } catch (error) {
       toast({ title: 'Error', description: 'Gagal membatalkan booking', variant: 'destructive' });
@@ -330,7 +370,7 @@ Mohon konfirmasi pembatalan. Terima kasih.`;
 
 Mohon konfirmasi perubahan jadwal. Terima kasih.`;
 
-    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, '_blank');
+    window.open(createWhatsAppUrl(message), '_blank');
     setRescheduleDates({});
   };
 
@@ -369,7 +409,7 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
       await fetch(`/api/bookings/${pendingBooking.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'expired' }),
+        body: JSON.stringify({ status: 'expired', bookingToken: pendingBooking.bookingToken }),
       });
 
       localStorage.removeItem('pendingBooking');
@@ -384,11 +424,11 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
       });
 
       // Refresh vehicles
-      const vehiclesResponse = await fetch('/api/vehicles');
-      const vehiclesData = await vehiclesResponse.json();
-      if (vehiclesData.success) {
-        setVehicles(vehiclesData.data.filter((v: Vehicle) => v.status === 'available'));
-      }
+        const vehiclesResponse = await fetch('/api/vehicles');
+        const vehiclesData = await vehiclesResponse.json();
+        if (vehiclesData.success) {
+          setVehicles(vehiclesData.data);
+        }
     } catch (error) {
       console.error('Error expiring booking:', error);
     }
@@ -464,14 +504,19 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
         ) : vehicles.length === 0 ? (
           <div className="text-center py-20">
             <Car className="h-12 w-12 text-white/20 mx-auto mb-4" />
-            <p className="text-white/40">Tidak ada kendaraan tersedia saat ini</p>
+            <p className="text-white/40">Belum ada kendaraan yang bisa ditampilkan saat ini</p>
           </div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {vehicles.map((vehicle) => (
+            {vehicles.map((vehicle) => {
+              const statusMeta = getVehicleStatusMeta(vehicle.status);
+
+              return (
               <Card
                 key={vehicle.id}
-                className="group bg-white/[0.02] border-white/10 hover:border-blue-500/30 transition-all duration-300 overflow-hidden"
+                className={`group bg-white/[0.02] border-white/10 transition-all duration-300 overflow-hidden ${
+                  statusMeta.canBook ? 'hover:border-blue-500/30' : 'opacity-90'
+                }`}
               >
                 {/* Vehicle Image */}
                 <div className="h-48 bg-gradient-to-br from-slate-800 to-slate-900 relative overflow-hidden">
@@ -479,7 +524,7 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                     <img 
                       src={vehicle.imageUrl} 
                       alt={`${vehicle.brand} ${vehicle.model}`}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300"
                     />
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center">
@@ -490,8 +535,8 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                   <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f] to-transparent opacity-60"></div>
                   {/* Badge */}
                   <div className="absolute top-4 right-4">
-                    <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                      Tersedia
+                    <Badge className={statusMeta.badgeClassName}>
+                      {statusMeta.label}
                     </Badge>
                   </div>
                 </div>
@@ -528,15 +573,16 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                         setSelectedVehicle(vehicle);
                         setBookingModalOpen(true);
                       }}
-                      className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white"
+                      disabled={!statusMeta.canBook}
+                      className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white disabled:from-slate-700 disabled:to-slate-700 disabled:text-white/50"
                     >
-                      Pesan
+                      {statusMeta.canBook ? 'Pesan' : statusMeta.label}
                       <ArrowRight className="h-4 w-4 ml-2" />
                     </Button>
                   </div>
                 </CardContent>
               </Card>
-            ))}
+            )})}
           </div>
         )}
 
@@ -858,7 +904,7 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                     asChild
                     className="flex-1 border-green-500/30 text-green-400 hover:bg-green-500/10"
                   >
-                    <a href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent('Halo Admin, saya ingin konfirmasi pembayaran untuk booking ID: ' + pendingBooking.id)}`} target="_blank">
+                    <a href={createWhatsAppUrl('Halo Admin, saya ingin konfirmasi pembayaran untuk booking ID: ' + pendingBooking.id)} target="_blank" rel="noreferrer">
                       <MessageCircle className="h-4 w-4 mr-2" />
                       WhatsApp
                     </a>
@@ -925,7 +971,7 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-white/30">
             <p>© 2024 Bintan Island Rental. All rights reserved.</p>
             <div className="flex items-center gap-4">
-              <a href={`https://wa.me/${WHATSAPP_NUMBER}`} target="_blank" className="flex items-center gap-1 hover:text-green-400 transition-colors">
+              <a href={createWhatsAppUrl()} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-green-400 transition-colors">
                 <MessageCircle className="h-4 w-4" />
                 WhatsApp Support
               </a>

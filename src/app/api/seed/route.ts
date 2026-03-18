@@ -9,6 +9,13 @@ import { db } from '@/lib/db';
  */
 export async function POST(request: NextRequest) {
   try {
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json(
+        { success: false, message: 'Seed endpoint disabled in production' },
+        { status: 403 }
+      );
+    }
+
     const hashedPassword = await bcrypt.hash('admin123', 10);
 
     // Create Standard Admin (admin_kecil)
@@ -78,6 +85,13 @@ export async function POST(request: NextRequest) {
  */
 export async function GET() {
   try {
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json(
+        { success: false, message: 'Seed endpoint disabled in production' },
+        { status: 403 }
+      );
+    }
+
     const users = await db.user.findMany({
       where: {
         email: {

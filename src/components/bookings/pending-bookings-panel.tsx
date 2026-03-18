@@ -98,7 +98,11 @@ export default function PendingBookingsPanel({ onBookingUpdate }: PendingBooking
 
   const fetchBookings = async () => {
     try {
-      const response = await fetch('/api/bookings?status=pending');
+      const response = await fetch('/api/bookings?status=pending', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+      });
       const data = await response.json();
       
       if (data.success) {
@@ -130,9 +134,12 @@ export default function PendingBookingsPanel({ onBookingUpdate }: PendingBooking
     
     try {
       const response = await fetch(`/api/bookings/${cancelDialog.booking.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'cancel' }),
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+        body: JSON.stringify({ status: 'cancelled' }),
       });
       
       const data = await response.json();

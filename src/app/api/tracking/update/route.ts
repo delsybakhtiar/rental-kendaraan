@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ensureGpsMode } from '@/lib/gps-mode';
+import { handleProductionTrackingIngest } from '@/lib/tracking-production';
 
 /**
  * @route   POST /api/tracking/update
  * @desc    Update GPS location with geofencing check (proxies to tracking service)
- * @access  Private (requires JWT)
+ * @access  Private (JWT admin or signed GPS device)
  * 
  * Request body:
  * {
@@ -18,70 +20,12 @@ import { NextRequest, NextResponse } from 'next/server';
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get authorization header
-    const authHeader = request.headers.get('authorization');
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized', message: 'No token provided' },
-        { status: 401 }
-      );
+    const modeCheck = ensureGpsMode('production');
+    if (!modeCheck.ok) {
+      return modeCheck.response;
     }
 
-    const body = await request.json();
-    const { vehicleId, latitude, longitude, speed, heading, ignition, fuel } = body;
-
-    // Validate required fields
-    if (!vehicleId || typeof latitude !== 'number' || typeof longitude !== 'number') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Validation failed',
-          message: 'vehicleId, latitude, and longitude are required',
-        },
-        { status: 400 }
-      );
-    }
-
-    // Validate coordinate ranges
-    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Validation failed',
-          message: 'Invalid coordinates',
-        },
-        { status: 400 }
-      );
-    }
-
-    // Forward to tracking service (port 3003)
-    const trackingServiceUrl = `http://localhost:3003/tracking/update`;
-    
-    const response = await fetch(trackingServiceUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': authHeader,
-      },
-      body: JSON.stringify({
-        vehicle_id: vehicleId,
-        lat: latitude,
-        lng: longitude,
-        speed: speed ?? undefined,
-        heading: heading ?? undefined,
-        ignition: ignition ?? undefined,
-        fuel: fuel ?? undefined,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return NextResponse.json(data, { status: response.status });
-    }
-
-    return NextResponse.json(data);
+    return handleProductionTrackingIngest(request);
   } catch (error) {
     console.error('Error in tracking update:', error);
     return NextResponse.json(

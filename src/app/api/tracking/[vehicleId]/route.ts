@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest } from '@/lib/jwt';
+import { syncPersistedGpsStatuses, withDerivedGpsStatus } from '@/lib/tracking';
 import { serializeData } from '@/lib/utils-serializer';
 
 /**
@@ -27,6 +28,8 @@ export async function GET(
         { status: 401 }
       );
     }
+
+    await syncPersistedGpsStatuses();
 
     const { vehicleId } = await params;
     const { searchParams } = new URL(request.url);
@@ -61,6 +64,15 @@ export async function GET(
         brand: true,
         color: true,
         status: true,
+        latitude: true,
+        longitude: true,
+        lastLocationAt: true,
+        lastTrackedAt: true,
+        gpsStatus: true,
+        currentSpeed: true,
+        currentHeading: true,
+        ignitionStatus: true,
+        deviceId: true,
         dailyRate: true,
       },
     });
@@ -77,7 +89,7 @@ export async function GET(
 
     return NextResponse.json({
       success: true,
-      vehicle: serializeData(vehicle),
+      vehicle: serializeData(withDerivedGpsStatus(vehicle)),
       logs: serializeData(logs),
       totalPoints: logs.length,
     });

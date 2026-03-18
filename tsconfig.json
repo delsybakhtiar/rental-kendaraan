@@ -37,6 +37,26 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "examples",
+    "mini-services",
+    "tests",
+    "src/components/ui/accordion.tsx",
+    "src/components/ui/aspect-ratio.tsx",
+    "src/components/ui/carousel.tsx",
+    "src/components/ui/collapsible.tsx",
+    "src/components/ui/command.tsx",
+    "src/components/ui/context-menu.tsx",
+    "src/components/ui/drawer.tsx",
+    "src/components/ui/hover-card.tsx",
+    "src/components/ui/input-otp.tsx",
+    "src/components/ui/menubar.tsx",
+    "src/components/ui/navigation-menu.tsx",
+    "src/components/ui/radio-group.tsx",
+    "src/components/ui/resizable.tsx",
+    "src/components/ui/slider.tsx",
+    "src/components/ui/toggle-group.tsx",
+    "src/components/ui/toggle.tsx",
+    "src/components/vehicles/vehicle-list.tsx"
   ]
 }

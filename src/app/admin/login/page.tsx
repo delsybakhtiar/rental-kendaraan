@@ -25,6 +25,7 @@ import {
   ArrowLeft,
   Star
 } from 'lucide-react';
+import { VuraSignature } from '@/components/vura-signature';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -33,23 +34,12 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Check if already logged in and seed demo users
+  // Redirect authenticated admins away from login
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
       router.push('/admin/dashboard');
-      return;
     }
-
-    // Seed demo users if they don't exist
-    const seedDemoUsers = async () => {
-      try {
-        await fetch('/api/seed', { method: 'POST' });
-      } catch (err) {
-        console.error('Failed to seed demo users:', err);
-      }
-    };
-    seedDemoUsers();
   }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -260,6 +250,9 @@ export default function LoginPage() {
                 </div>
               </CardContent>
             </Card>
+            <div className="mt-4 flex justify-center lg:justify-start">
+              <VuraSignature label="Developed by" />
+            </div>
           </div>
 
           {/* Right - Feature Comparison */}
