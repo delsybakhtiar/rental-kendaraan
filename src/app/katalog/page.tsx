@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { format, differenceInDays, addMinutes } from 'date-fns';
 import { id } from 'date-fns/locale';
@@ -114,6 +114,7 @@ function getVehicleStatusMeta(status: string): {
 
 interface PendingBooking {
   id: string;
+  bookingCode?: string;
   vehicleId: string;
   vehicle: {
     id: string;
@@ -155,12 +156,27 @@ function formatRupiah(amount: number): string {
   }).format(amount);
 }
 
+function getDisplayBookingCode(booking: Pick<PendingBooking, 'id' | 'bookingCode'>): string {
+  if (booking.bookingCode) {
+    return booking.bookingCode;
+  }
+
+  return `OTM-${booking.id.replace(/[^a-zA-Z0-9]/g, '').slice(-6).padStart(6, '0').toUpperCase()}`;
+}
+
 const bookingCalendarClassNames = {
   month_caption: 'text-slate-900',
   caption_label: 'text-slate-900 font-semibold',
-  weekday: 'text-slate-500 font-medium',
+  weekdays: 'grid grid-cols-7 gap-1',
+  week: 'grid grid-cols-7 gap-1 mt-1',
+  weekday: 'flex h-8 items-center justify-center whitespace-nowrap rounded-md text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500',
   outside: 'text-slate-300',
   disabled: 'text-slate-300 opacity-50',
+};
+
+const bookingCalendarFormatters = {
+  formatWeekdayName: (date: Date) =>
+    format(date, 'EEE', { locale: id }).replace('.', '').slice(0, 3),
 };
 
 export default function KatalogPage() {
@@ -173,6 +189,9 @@ export default function KatalogPage() {
   const [pendingBooking, setPendingBooking] = useState<PendingBooking | null>(null);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [rescheduleDates, setRescheduleDates] = useState<{ start?: Date; end?: Date }>({});
+  const [startDatePickerOpen, setStartDatePickerOpen] = useState(false);
+  const [endDatePickerOpen, setEndDatePickerOpen] = useState(false);
+  const rentalOptionTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   // Booking form state
   const [startDate, setStartDate] = useState<Date>();
@@ -323,6 +342,7 @@ export default function KatalogPage() {
   // Handle cancel booking
   const handleCancelBooking = async () => {
     if (!pendingBooking) return;
+    const bookingCode = getDisplayBookingCode(pendingBooking);
 
     try {
       await fetch(`/api/bookings/${pendingBooking.id}`, {
@@ -335,7 +355,7 @@ export default function KatalogPage() {
       const message = `Halo Admin, saya ingin membatalkan pesanan mobil:
 
 📦 *Detail Pesanan:*
-- ID Booking: ${pendingBooking.id}
+- Kode Booking: ${bookingCode}
 - Mobil: ${pendingBooking.vehicle.brand} ${pendingBooking.vehicle.model} (${pendingBooking.vehicle.plateNumber})
 - Tanggal: ${format(new Date(pendingBooking.startDate), 'dd MMM yyyy', { locale: id })} - ${format(new Date(pendingBooking.endDate), 'dd MMM yyyy', { locale: id })}
 - Total: ${formatRupiah(pendingBooking.totalAmount)}
@@ -362,11 +382,12 @@ Mohon konfirmasi pembatalan. Terima kasih.`;
   // Handle reschedule via WhatsApp
   const handleReschedule = () => {
     if (!pendingBooking || !rescheduleDates.start || !rescheduleDates.end) return;
+    const bookingCode = getDisplayBookingCode(pendingBooking);
 
     const message = `Halo Admin, saya ingin mengubah jadwal pesanan mobil:
 
 📦 *Detail Pesanan:*
-- ID Booking: ${pendingBooking.id}
+- Kode Booking: ${bookingCode}
 - Mobil: ${pendingBooking.vehicle.brand} ${pendingBooking.vehicle.model} (${pendingBooking.vehicle.plateNumber})
 
 📅 *Jadwal Lama:*
@@ -409,6 +430,8 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
   }, [pendingBooking]);
+
+  const displayBookingCode = pendingBooking ? getDisplayBookingCode(pendingBooking) : null;
 
   // Handle expire booking
   const handleExpireBooking = async () => {
@@ -639,7 +662,16 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
       </main>
 
       {/* Booking Modal */}
-      <Dialog open={bookingModalOpen} onOpenChange={setBookingModalOpen}>
+      <Dialog
+        open={bookingModalOpen}
+        onOpenChange={(open) => {
+          setBookingModalOpen(open);
+          if (!open) {
+            setStartDatePickerOpen(false);
+            setEndDatePickerOpen(false);
+          }
+        }}
+      >
         <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-lg overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 text-gray-900 sm:p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-gray-900">
@@ -656,7 +688,7 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
               <div className="space-y-2">
                 <Label className="text-gray-700">Tanggal Mulai</Label>
-                <Popover>
+                <Popover open={startDatePickerOpen} onOpenChange={setStartDatePickerOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
@@ -676,13 +708,18 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                       buttonVariant="outline"
                       className="w-full rounded-2xl bg-white p-3 text-slate-900"
                       classNames={bookingCalendarClassNames}
+                      formatters={bookingCalendarFormatters}
                       mode="single"
                       selected={startDate}
                       onSelect={(date) => {
+                        if (!date) return;
+
                         setStartDate(date);
                         if (date && (!endDate || endDate < date)) {
                           setEndDate(date);
                         }
+                        setStartDatePickerOpen(false);
+                        setEndDatePickerOpen(true);
                       }}
                       disabled={(date) => date < new Date()}
                     />
@@ -691,7 +728,7 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
               </div>
               <div className="space-y-2">
                 <Label className="text-gray-700">Tanggal Selesai</Label>
-                <Popover>
+                <Popover open={endDatePickerOpen} onOpenChange={setEndDatePickerOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
@@ -711,9 +748,18 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                       buttonVariant="outline"
                       className="w-full rounded-2xl bg-white p-3 text-slate-900"
                       classNames={bookingCalendarClassNames}
+                      formatters={bookingCalendarFormatters}
                       mode="single"
                       selected={endDate}
-                      onSelect={setEndDate}
+                      onSelect={(date) => {
+                        if (!date) return;
+
+                        setEndDate(date);
+                        setEndDatePickerOpen(false);
+                        requestAnimationFrame(() => {
+                          rentalOptionTriggerRef.current?.focus();
+                        });
+                      }}
                       disabled={(date) => date < (startDate || new Date())}
                     />
                   </PopoverContent>
@@ -725,7 +771,11 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
             <div className="space-y-2">
               <Label className="text-gray-700">Opsi Rental</Label>
               <Select value={rentalOption} onValueChange={(v) => setRentalOption(v as 'lepas-kunci' | 'dengan-sopir')}>
-                <SelectTrigger className="bg-gray-50 border-gray-200 text-gray-900">
+                <SelectTrigger
+                  ref={rentalOptionTriggerRef}
+                  className="bg-gray-50 border-gray-200 text-gray-900"
+                  data-testid="rental-option-trigger"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 {/* ensure dropdown text is dark regardless of theme, avoiding white-on-white in dark mode */}
@@ -865,7 +915,7 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                 <div className="mb-4">
                   <img 
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
-                      `QRIS:BINTAN-RENTAL:${pendingBooking.id}:${pendingBooking.totalAmount}:IDR`
+                      `QRIS:BINTAN-RENTAL:${displayBookingCode}:${pendingBooking.totalAmount}:IDR`
                     )}&bgcolor=ffffff&color=000000&ecc=H`}
                     alt="QRIS Payment Code"
                     className="mx-auto rounded-lg"
@@ -876,7 +926,7 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                 <div className="space-y-1">
                   <p className="text-sm font-semibold text-slate-700">Scan QRIS untuk Membayar</p>
                   <p className="text-xs text-slate-500">
-                    ID: {pendingBooking.id.slice(0, 8).toUpperCase()}
+                    Kode Booking: {displayBookingCode}
                   </p>
                   <p className="text-lg font-bold text-emerald-600">
                     {formatRupiah(pendingBooking.totalAmount)}
@@ -935,7 +985,7 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                     asChild
                     className="flex-1 border-green-500/30 text-green-400 hover:bg-green-500/10"
                   >
-                    <a href={createWhatsAppUrl('Halo Admin, saya ingin konfirmasi pembayaran untuk booking ID: ' + pendingBooking.id)} target="_blank" rel="noreferrer">
+                    <a href={createWhatsAppUrl('Halo Admin, saya ingin konfirmasi pembayaran untuk kode booking: ' + displayBookingCode)} target="_blank" rel="noreferrer">
                       <MessageCircle className="h-4 w-4 mr-2" />
                       WhatsApp
                     </a>
@@ -966,6 +1016,7 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                           buttonVariant="outline"
                           className="w-full rounded-2xl bg-white p-3 text-slate-900"
                           classNames={bookingCalendarClassNames}
+                          formatters={bookingCalendarFormatters}
                           mode="single"
                           selected={rescheduleDates.start}
                           onSelect={(date) => setRescheduleDates(prev => ({ ...prev, start: date }))}
@@ -993,6 +1044,7 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                           buttonVariant="outline"
                           className="w-full rounded-2xl bg-white p-3 text-slate-900"
                           classNames={bookingCalendarClassNames}
+                          formatters={bookingCalendarFormatters}
                           mode="single"
                           selected={rescheduleDates.end}
                           onSelect={(date) => setRescheduleDates(prev => ({ ...prev, end: date }))}

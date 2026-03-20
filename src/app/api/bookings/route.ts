@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { serializeData } from '@/lib/utils-serializer';
 import { requireAdmin } from '@/lib/jwt';
+import { generateUniqueBookingCode } from '@/lib/booking-code';
 
 // POST /api/bookings - Create a new booking
 export async function POST(request: Request) {
@@ -74,6 +75,7 @@ export async function POST(request: Request) {
     // Calculate expiry time (30 minutes from now)
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
     const bookingToken = randomUUID();
+    const bookingCode = await generateUniqueBookingCode();
 
     // Create the rental with pending status
     const rental = await db.rental.create({
@@ -95,6 +97,7 @@ export async function POST(request: Request) {
           customerPhone: customerPhone || '',
           expiresAt: expiresAt.toISOString(),
           bookingToken,
+          bookingCode,
         }),
       },
       include: {
@@ -130,6 +133,7 @@ export async function POST(request: Request) {
       customerPhone: customerPhone || '',
       expiresAt: expiresAt.toISOString(),
       bookingToken,
+      bookingCode,
       status: 'pending',
       createdAt: rental.createdAt.toISOString(),
     };

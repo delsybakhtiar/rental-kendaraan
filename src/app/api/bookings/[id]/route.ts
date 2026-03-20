@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { serializeData } from '@/lib/utils-serializer';
 import { authenticateRequest, authorizeRole } from '@/lib/jwt';
+import { deriveFallbackBookingCode } from '@/lib/booking-code';
 
 function getBookingNotesToken(notes: string | null): string | null {
   if (!notes) return null;
@@ -255,6 +256,8 @@ export async function GET(
     const booking = {
       ...serializeData(rental),
       ...notesData,
+      bookingCode:
+        (notesData as { bookingCode?: string }).bookingCode || deriveFallbackBookingCode(rental.id),
     };
 
     return NextResponse.json({
