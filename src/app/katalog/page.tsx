@@ -170,6 +170,13 @@ function getDisplayBookingCode(booking: Pick<PendingBooking, 'id' | 'bookingCode
   return `OTM-${booking.id.replace(/[^a-zA-Z0-9]/g, '').slice(-6).padStart(6, '0').toUpperCase()}`;
 }
 
+function openWhatsAppConfirmation(url: string) {
+  const popup = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!popup) {
+    window.location.href = url;
+  }
+}
+
 const bookingCalendarClassNames = {
   month_caption: 'text-slate-900',
   caption_label: 'text-slate-900 font-semibold',
@@ -328,6 +335,7 @@ export default function KatalogPage() {
   // Handle payment confirmation
   const handlePaymentConfirm = async () => {
     if (!pendingBooking) return;
+    const bookingCode = getDisplayBookingCode(pendingBooking);
     
     setProcessingPayment(true);
     try {
@@ -340,6 +348,19 @@ export default function KatalogPage() {
       const data = await response.json();
 
       if (data.success) {
+        const message = `Halo Admin, pembayaran booking saya sudah berhasil dikonfirmasi.
+
+📦 *Detail Booking*
+- Kode Booking: ${bookingCode}
+- Kendaraan: ${pendingBooking.vehicle.brand} ${pendingBooking.vehicle.model} (${pendingBooking.vehicle.plateNumber})
+- Periode Sewa: ${format(new Date(pendingBooking.startDate), 'dd MMM yyyy, HH:mm', { locale: id })} - ${format(new Date(pendingBooking.endDate), 'dd MMM yyyy, HH:mm', { locale: id })}
+- Durasi: ${pendingBooking.duration} hari
+- Opsi Rental: ${pendingBooking.rentalOption === 'dengan-sopir' ? 'Dengan Sopir' : 'Lepas Kunci'}
+- Total Pembayaran: ${formatRupiah(pendingBooking.totalAmount)}
+${pendingBooking.pickupLocation ? `- Pickup: ${pendingBooking.pickupLocation}` : ''}
+
+Mohon konfirmasi bahwa booking saya sudah aktif. Terima kasih.`;
+
         toast({ title: 'Pembayaran Berhasil', description: 'Kendaraan berhasil dipesan!' });
         localStorage.removeItem('pendingBooking');
         setPaymentModalOpen(false);
@@ -350,6 +371,7 @@ export default function KatalogPage() {
         if (vehiclesData.success) {
           setVehicles(vehiclesData.data);
         }
+        openWhatsAppConfirmation(createWhatsAppUrl(message));
       } else {
         toast({ title: 'Error', description: data.message, variant: 'destructive' });
       }

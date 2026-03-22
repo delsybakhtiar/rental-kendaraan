@@ -96,10 +96,15 @@ test.describe('Auth and public booking flows', () => {
       });
   });
 
-  test('katalog mengirim bookingToken saat konfirmasi pembayaran', async ({ page }) => {
+  test('katalog mengirim bookingToken dan membuka konfirmasi WhatsApp saat pembayaran dikonfirmasi', async ({ page }) => {
     const patchBodies: Array<Record<string, unknown>> = [];
 
     await page.addInitScript(() => {
+      (window as typeof window & { __lastOpenedUrl?: string }).__lastOpenedUrl = '';
+      window.open = ((url?: string | URL) => {
+        (window as typeof window & { __lastOpenedUrl?: string }).__lastOpenedUrl = String(url ?? '');
+        return {} as Window;
+      }) as typeof window.open;
       localStorage.setItem(
         'pendingBooking',
         JSON.stringify({
@@ -164,6 +169,23 @@ test.describe('Auth and public booking flows', () => {
       status: 'paid',
       bookingToken: 'public-booking-token',
     });
+
+    await expect
+      .poll(() =>
+        page.evaluate(() => (window as typeof window & { __lastOpenedUrl?: string }).__lastOpenedUrl ?? ''),
+      )
+      .toContain('https://wa.me/');
+
+    const openedUrl = await page.evaluate(
+      () => (window as typeof window & { __lastOpenedUrl?: string }).__lastOpenedUrl ?? '',
+    );
+
+    expect(openedUrl).toContain('OTM-9X3K2Q');
+    expect(openedUrl).toContain('Toyota%20Avanza');
+    expect(openedUrl).toContain('BP%201234%20AA');
+    expect(openedUrl).toContain('Bandara');
+    expect(openedUrl).toContain('900.000');
+    expect(openedUrl).not.toContain('booking-1');
   });
 
   test('katalog menampilkan booking code pendek dan memakainya di CTA WhatsApp', async ({ page }) => {
