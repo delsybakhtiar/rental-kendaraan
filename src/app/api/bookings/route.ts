@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { serializeData } from '@/lib/utils-serializer';
 import { requireAdmin } from '@/lib/jwt';
 import { generateUniqueBookingCode } from '@/lib/booking-code';
+import { calculateRentalDurationDays, isRentalRangeValid } from '@/lib/rental-duration';
 
 // POST /api/bookings - Create a new booking
 export async function POST(request: Request) {
@@ -13,7 +14,6 @@ export async function POST(request: Request) {
       vehicleId,
       startDate,
       endDate,
-      duration,
       basePrice,
       driverFee,
       totalAmount,
@@ -32,6 +32,15 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    if (!isRentalRangeValid(startDate, endDate)) {
+      return NextResponse.json(
+        { success: false, message: 'Tanggal dan jam selesai harus lebih besar dari tanggal dan jam mulai' },
+        { status: 400 }
+      );
+    }
+
+    const computedDuration = calculateRentalDurationDays(startDate, endDate);
 
     // Check if vehicle exists and is available
     const vehicle = await db.vehicle.findUnique({
@@ -88,7 +97,7 @@ export async function POST(request: Request) {
         deposit: 0,
         status: 'pending',
         notes: JSON.stringify({
-          duration: duration || 1,
+          duration: computedDuration,
           basePrice: basePrice || 0,
           driverFee: driverFee || 0,
           rentalOption: rentalOption || 'lepas-kunci',
@@ -123,7 +132,7 @@ export async function POST(request: Request) {
       vehicle: serializeData(rental.vehicle),
       startDate: rental.startDate.toISOString(),
       endDate: rental.endDate.toISOString(),
-      duration: duration || 1,
+      duration: computedDuration,
       basePrice: basePrice || 0,
       driverFee: driverFee || 0,
       totalAmount: Number(rental.totalAmount) || totalAmount || 0,

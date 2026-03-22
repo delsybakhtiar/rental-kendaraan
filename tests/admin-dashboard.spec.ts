@@ -278,6 +278,51 @@ test.describe('Admin dashboard vehicle image flow', () => {
     await expect(page.getByTestId('premium-tracking-panel')).toContainText('1.150000, 104.550000');
   });
 
+  test('dashboard admin tidak mem-poll dashboard setiap detik', async ({ page }) => {
+    let dashboardRequests = 0;
+
+    await page.addInitScript(() => {
+      window.localStorage.setItem('token', 'test-token');
+      window.localStorage.setItem(
+        'user',
+        JSON.stringify({
+          name: 'Playwright Admin',
+          email: 'admin@example.com',
+          accountType: 'premium',
+        }),
+      );
+    });
+
+    await page.route('**/api/dashboard', async (route) => {
+      dashboardRequests += 1;
+      await mockJson(route, dashboardPayload([baseVehicle], 'production'));
+    });
+    await page.route('**/api/vehicles?*', (route) => mockJson(route, { success: true, data: [baseVehicle] }));
+    await page.route('**/api/vehicles', (route) => {
+      if (route.request().method() === 'GET') {
+        return mockJson(route, { success: true, data: [baseVehicle] });
+      }
+      return mockJson(route, { success: true }, 200);
+    });
+    await page.route('**/api/geofences?*', (route) => mockJson(route, { success: true, data: [] }));
+    await page.route('**/api/geofences/alerts?*', (route) => mockJson(route, { success: true, data: [] }));
+    await page.route('**/api/tracking/**', (route) => mockJson(route, {
+      success: true,
+      vehicles: { total: 1, withLocation: 0, outsideOperationalArea: 0, engineKilled: 0 },
+      gps: { online: 0, stale: 0, offline: 1 },
+      tracking: { recentPointsLastHour: 0 },
+      sync: { pending: 0, exhausted: 0, oldestPendingMinutes: 0 },
+      externalService: { configuredUrl: 'https://tracking.example.com', status: 'healthy', reachable: true, httpStatus: 200, details: null },
+    }));
+
+    await page.goto('/admin/dashboard');
+    await expect(page.getByText('Daftar Kendaraan')).toBeVisible();
+
+    await page.waitForTimeout(6500);
+
+    expect(dashboardRequests).toBeLessThanOrEqual(2);
+  });
+
   test('dashboard premium menampilkan workflow security dan provisioning device GPS', async ({ page }) => {
     const trackedVehicle = makeVehicle({
       id: 'vehicle-security',

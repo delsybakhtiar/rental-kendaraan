@@ -55,7 +55,7 @@ import { createWhatsAppUrl, STANDARD_TO_PREMIUM_MESSAGE } from '@/lib/contact';
 import { TrackingTimeline } from '@/components/tracking/tracking-history';
 import { VuraSignature } from '@/components/vura-signature';
 import {
-  formatRentalDate,
+  formatRentalDateTime,
   getLatestRental,
   getRentalOperationalBadgeClass,
   getRentalOperationalLabel,
@@ -184,8 +184,8 @@ function getVehicleRentalSummary(vehicle: Vehicle) {
     status,
     label: getRentalOperationalLabel(status),
     badgeClass: getRentalOperationalBadgeClass(status),
-    startDateLabel: formatRentalDate(rental?.startDate),
-    endDateLabel: formatRentalDate(rental?.endDate),
+    startDateLabel: formatRentalDateTime(rental?.startDate),
+    endDateLabel: formatRentalDateTime(rental?.endDate),
   };
 }
 
@@ -421,12 +421,12 @@ export default function DashboardPage() {
   const upgradeToPremiumUrl = createWhatsAppUrl(STANDARD_TO_PREMIUM_MESSAGE);
 
   // Fetch data
-  const { data: dashboardData, isLoading: dashboardLoading, refetch: refetchDashboard } = useDashboard();
+  const { data: dashboardData, isLoading: dashboardLoading, refetch: refetchDashboard } = useDashboard(isPremium);
   const { data: vehicles = [], refetch: refetchVehicles } = useVehicles();
   const { data: geofences = [] } = useGeofences(true);
   const { data: alerts = [], refetch: refetchAlerts } = useAlerts(false);
   const { data: trackingData } = useTrackingLogs(selectedVehicle?.id, 24);
-  const { data: trackingStatus } = useTrackingStatus();
+  const { data: trackingStatus } = useTrackingStatus(isPremium);
   const gpsIntegrationMode = dashboardData?.gpsIntegrationMode ?? 'production';
 
   const vehiclesWithLocation = useMemo(() => 

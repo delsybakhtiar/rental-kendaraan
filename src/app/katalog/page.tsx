@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
-import { format, differenceInDays, addMinutes } from 'date-fns';
+import { format, addMinutes } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -55,6 +55,12 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { createWhatsAppUrl } from '@/lib/contact';
 import { cn } from '@/lib/utils';
+import {
+  calculateRentalDurationDays,
+  combineDateAndTime,
+  formatRentalDurationRule,
+  isRentalRangeValid,
+} from '@/lib/rental-duration';
 
 // Constants
 const DRIVER_FEE_PER_DAY = 150000;
@@ -196,6 +202,8 @@ export default function KatalogPage() {
   // Booking form state
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
+  const [startTime, setStartTime] = useState('14:00');
+  const [endTime, setEndTime] = useState('14:00');
   const [rentalOption, setRentalOption] = useState<'lepas-kunci' | 'dengan-sopir'>('lepas-kunci');
   const [pickupLocation, setPickupLocation] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -242,13 +250,17 @@ export default function KatalogPage() {
     }
   }, []);
 
+  const bookingStartDateTime = useMemo(() => combineDateAndTime(startDate, startTime), [startDate, startTime]);
+  const bookingEndDateTime = useMemo(() => combineDateAndTime(endDate, endTime), [endDate, endTime]);
+
   // Duration calculation
-  const duration = useMemo(() => {
-    if (startDate && endDate) {
-      return Math.max(1, differenceInDays(endDate, startDate) + 1);
-    }
-    return 0;
-  }, [startDate, endDate]);
+  const duration = useMemo(() => (
+    calculateRentalDurationDays(bookingStartDateTime, bookingEndDateTime)
+  ), [bookingEndDateTime, bookingStartDateTime]);
+
+  const isBookingRangeValid = useMemo(() => (
+    isRentalRangeValid(bookingStartDateTime, bookingEndDateTime)
+  ), [bookingEndDateTime, bookingStartDateTime]);
 
   // Price calculation
   const pricing = useMemo(() => {
@@ -261,8 +273,17 @@ export default function KatalogPage() {
 
   // Handle booking submission
   const handleBooking = async () => {
-    if (!selectedVehicle || !startDate || !endDate) {
+    if (!selectedVehicle || !bookingStartDateTime || !bookingEndDateTime) {
       toast({ title: 'Error', description: 'Lengkapi semua data', variant: 'destructive' });
+      return;
+    }
+
+    if (!isBookingRangeValid) {
+      toast({
+        title: 'Rentang Waktu Tidak Valid',
+        description: 'Tanggal dan jam selesai harus lebih besar dari tanggal dan jam mulai.',
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -273,8 +294,8 @@ export default function KatalogPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           vehicleId: selectedVehicle.id,
-          startDate: startDate.toISOString(),
-          endDate: endDate.toISOString(),
+          startDate: bookingStartDateTime.toISOString(),
+          endDate: bookingEndDateTime.toISOString(),
           duration,
           basePrice: pricing.basePrice,
           driverFee: pricing.driverFee,
@@ -357,7 +378,7 @@ export default function KatalogPage() {
 📦 *Detail Pesanan:*
 - Kode Booking: ${bookingCode}
 - Mobil: ${pendingBooking.vehicle.brand} ${pendingBooking.vehicle.model} (${pendingBooking.vehicle.plateNumber})
-- Tanggal: ${format(new Date(pendingBooking.startDate), 'dd MMM yyyy', { locale: id })} - ${format(new Date(pendingBooking.endDate), 'dd MMM yyyy', { locale: id })}
+- Tanggal: ${format(new Date(pendingBooking.startDate), 'dd MMM yyyy, HH:mm', { locale: id })} - ${format(new Date(pendingBooking.endDate), 'dd MMM yyyy, HH:mm', { locale: id })}
 - Total: ${formatRupiah(pendingBooking.totalAmount)}
 
 Mohon konfirmasi pembatalan. Terima kasih.`;
@@ -391,12 +412,12 @@ Mohon konfirmasi pembatalan. Terima kasih.`;
 - Mobil: ${pendingBooking.vehicle.brand} ${pendingBooking.vehicle.model} (${pendingBooking.vehicle.plateNumber})
 
 📅 *Jadwal Lama:*
-- ${format(new Date(pendingBooking.startDate), 'dd MMM yyyy', { locale: id })} - ${format(new Date(pendingBooking.endDate), 'dd MMM yyyy', { locale: id })}
+- ${format(new Date(pendingBooking.startDate), 'dd MMM yyyy, HH:mm', { locale: id })} - ${format(new Date(pendingBooking.endDate), 'dd MMM yyyy, HH:mm', { locale: id })}
 - Durasi: ${pendingBooking.duration} hari
 
 📅 *Jadwal Baru:*
 - ${format(rescheduleDates.start, 'dd MMM yyyy', { locale: id })} - ${format(rescheduleDates.end, 'dd MMM yyyy', { locale: id })}
-- Durasi: ${differenceInDays(rescheduleDates.end, rescheduleDates.start) + 1} hari
+- Durasi: ${Math.max(1, Math.round((rescheduleDates.end.getTime() - rescheduleDates.start.getTime()) / (1000 * 60 * 60 * 24)) + 1)} hari
 
 Mohon konfirmasi perubahan jadwal. Terima kasih.`;
 
@@ -715,7 +736,7 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                         if (!date) return;
 
                         setStartDate(date);
-                        if (date && (!endDate || endDate < date)) {
+                        if (!endDate || endDate < date) {
                           setEndDate(date);
                         }
                         setStartDatePickerOpen(false);
@@ -764,6 +785,29 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                     />
                   </PopoverContent>
                 </Popover>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+              <div className="space-y-2">
+                <Label className="text-gray-700">Jam Mulai</Label>
+                <Input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="h-11 rounded-xl border-gray-200 bg-white text-gray-900"
+                  data-testid="booking-start-time-input"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-gray-700">Jam Selesai</Label>
+                <Input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="h-11 rounded-xl border-gray-200 bg-white text-gray-900"
+                  data-testid="booking-end-time-input"
+                />
               </div>
             </div>
 
@@ -822,9 +866,24 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
             {/* Price Summary */}
             {duration > 0 && (
               <div className="bg-gray-50 rounded-xl p-4 space-y-2 border border-gray-200">
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-700">
+                  {formatRentalDurationRule(duration)}
+                </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">{formatRupiah(getDailyRateValue(selectedVehicle?.dailyRate))} × {duration} hari</span>
                   <span className="text-gray-900">{formatRupiah(pricing.basePrice)}</span>
+                </div>
+                <div className="flex justify-between text-sm gap-4">
+                  <span className="text-gray-600">Mulai</span>
+                  <span className="text-right text-gray-900">
+                    {bookingStartDateTime ? format(bookingStartDateTime, 'dd MMM yyyy, HH:mm', { locale: id }) : '-'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm gap-4">
+                  <span className="text-gray-600">Selesai</span>
+                  <span className="text-right text-gray-900">
+                    {bookingEndDateTime ? format(bookingEndDateTime, 'dd MMM yyyy, HH:mm', { locale: id }) : '-'}
+                  </span>
                 </div>
                 {pricing.driverFee > 0 && (
                   <div className="flex justify-between text-sm">
@@ -843,7 +902,7 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
 
             <Button
               onClick={handleBooking}
-              disabled={!startDate || !endDate || processingPayment}
+              disabled={!bookingStartDateTime || !bookingEndDateTime || !isBookingRangeValid || processingPayment}
               className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white"
             >
               {processingPayment ? (
@@ -894,8 +953,10 @@ Mohon konfirmasi perubahan jadwal. Terima kasih.`;
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Tanggal</span>
-                  <span className="text-gray-900">
-                    {format(new Date(pendingBooking.startDate), 'dd MMM', { locale: id })} - {format(new Date(pendingBooking.endDate), 'dd MMM yyyy', { locale: id })}
+                  <span className="text-right text-gray-900">
+                    {format(new Date(pendingBooking.startDate), 'dd MMM yyyy, HH:mm', { locale: id })}
+                    <br />
+                    {format(new Date(pendingBooking.endDate), 'dd MMM yyyy, HH:mm', { locale: id })}
                   </span>
                 </div>
                 <div className="flex justify-between">

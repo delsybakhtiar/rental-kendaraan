@@ -4,6 +4,7 @@ import { getGpsIntegrationMode } from '@/lib/gps-mode';
 import { syncPersistedGpsStatuses, withDerivedGpsStatusList } from '@/lib/tracking';
 import { serializeData } from '@/lib/utils-serializer';
 import { requireAdmin } from '@/lib/jwt';
+import { calculateRentalDurationDays } from '@/lib/rental-duration';
 
 // GET /api/dashboard - Get dashboard statistics
 export async function GET(request: NextRequest) {
@@ -67,9 +68,7 @@ export async function GET(request: NextRequest) {
     });
 
     const totalPotentialRevenue = activeRentalsData.reduce((sum, rental) => {
-      const days = Math.ceil(
-        (new Date(rental.endDate).getTime() - new Date(rental.startDate).getTime()) / (1000 * 60 * 60 * 24)
-      );
+      const days = calculateRentalDurationDays(rental.startDate, rental.endDate);
       const rate = rental.vehicle.dailyRate ? Number(rental.vehicle.dailyRate) : 0;
       return sum + days * rate;
     }, 0);

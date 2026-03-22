@@ -80,3 +80,18 @@ export function formatRentalDate(value: Date | string | null | undefined): strin
     year: 'numeric',
   }).format(date);
 }
+
+export function formatRentalDateTime(value: Date | string | null | undefined): string {
+  const date = toDate(value);
+  if (!date) {
+    return '-';
+  }
+
+  return new Intl.DateTimeFormat('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}

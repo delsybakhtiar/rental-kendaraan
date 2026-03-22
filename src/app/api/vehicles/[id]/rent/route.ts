@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/jwt';
+import { calculateRentalDurationDays, isRentalRangeValid } from '@/lib/rental-duration';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -19,7 +20,7 @@ export async function POST(
 
     const { id } = await params;
     const body = await request.json();
-    const { price, startDate, endDate, duration } = body;
+    const { price, startDate, endDate } = body;
 
     // Check if vehicle exists
     const vehicle = await db.vehicle.findUnique({
@@ -88,6 +89,14 @@ export async function POST(
       d.setDate(d.getDate() + 1);
       return d;
     })();
+    const computedDuration = calculateRentalDurationDays(rentalStartDate, rentalEndDate);
+
+    if (!isRentalRangeValid(rentalStartDate, rentalEndDate)) {
+      return NextResponse.json(
+        { success: false, message: 'Tanggal dan jam selesai harus lebih besar dari tanggal dan jam mulai' },
+        { status: 400 }
+      );
+    }
 
     // Create a rental record
     const rental = await db.rental.create({
@@ -100,7 +109,7 @@ export async function POST(
         deposit: 0,
         status: 'active',
         startOdometer: 0,
-        notes: duration ? `Durasi sewa: ${duration} hari` : undefined,
+        notes: `Durasi sewa: ${computedDuration} hari`,
       },
     });
 
@@ -119,7 +128,7 @@ export async function POST(
           id: rental.id,
           startDate: rental.startDate,
           endDate: rental.endDate,
-          duration: duration || 1,
+          duration: computedDuration,
           totalAmount: rental.totalAmount,
         },
       },

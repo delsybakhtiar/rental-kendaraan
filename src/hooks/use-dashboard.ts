@@ -19,7 +19,7 @@ function getAuthHeaders(init?: HeadersInit): HeadersInit {
 }
 
 // Dashboard data hook
-export function useDashboard() {
+export function useDashboard(enableLiveRefresh = false) {
   return useQuery<DashboardStats>({
     queryKey: ['dashboard'],
     queryFn: async () => {
@@ -29,8 +29,10 @@ export function useDashboard() {
       if (!res.ok) throw new Error('Failed to fetch dashboard');
       return res.json();
     },
-    refetchInterval: 5000, // Refresh every 5 seconds for real-time updates
-    staleTime: 2000, // Consider data stale after 2 seconds
+    refetchInterval: enableLiveRefresh ? 30000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    staleTime: enableLiveRefresh ? 15000 : 30000,
   });
 }
 
@@ -48,6 +50,8 @@ export function useVehicles(status?: string) {
       // Handle both array response and {success, data} response format
       return Array.isArray(json) ? json : (json.data || []);
     },
+    refetchOnWindowFocus: false,
+    staleTime: 30000,
   });
 }
 
@@ -140,10 +144,12 @@ export function useTrackingLogs(vehicleId?: string, hours = 24) {
       return res.json();
     },
     enabled: !!vehicleId,
+    refetchOnWindowFocus: false,
+    staleTime: 15000,
   });
 }
 
-export function useTrackingStatus() {
+export function useTrackingStatus(enableLiveRefresh = false) {
   return useQuery<TrackingStatus>({
     queryKey: ['tracking-status'],
     queryFn: async () => {
@@ -153,6 +159,10 @@ export function useTrackingStatus() {
       if (!res.ok) throw new Error('Failed to fetch tracking logs');
       return res.json();
     },
+    refetchInterval: enableLiveRefresh ? 30000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    staleTime: enableLiveRefresh ? 15000 : 30000,
   });
 }
 
@@ -190,6 +200,8 @@ export function useGeofences(isActive?: boolean) {
       // Handle both array response and {success, data} response format
       return Array.isArray(json) ? json : (json.data || []);
     },
+    refetchOnWindowFocus: false,
+    staleTime: 30000,
   });
 }
 
@@ -266,6 +278,8 @@ export function useAlerts(isResolved?: boolean) {
       // Handle both array response and {success, data} response format
       return Array.isArray(json) ? json : (json.data || []);
     },
+    refetchOnWindowFocus: false,
+    staleTime: 15000,
   });
 }
 
